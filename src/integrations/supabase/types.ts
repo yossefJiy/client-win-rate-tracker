@@ -18,23 +18,32 @@ export type Database = {
         Row: {
           client_id: string
           created_at: string
+          google_ads_customer_id: string | null
           id: string
+          meta_ad_account_id: string | null
           poconverto_client_key: string | null
           shop_domain: string | null
+          tiktok_ad_account_id: string | null
         }
         Insert: {
           client_id: string
           created_at?: string
+          google_ads_customer_id?: string | null
           id?: string
+          meta_ad_account_id?: string | null
           poconverto_client_key?: string | null
           shop_domain?: string | null
+          tiktok_ad_account_id?: string | null
         }
         Update: {
           client_id?: string
           created_at?: string
+          google_ads_customer_id?: string | null
           id?: string
+          meta_ad_account_id?: string | null
           poconverto_client_key?: string | null
           shop_domain?: string | null
+          tiktok_ad_account_id?: string | null
         }
         Relationships: [
           {
@@ -49,6 +58,7 @@ export type Database = {
       client_monthly_services: {
         Row: {
           agreement_id: string | null
+          agreement_link: string | null
           client_id: string
           created_at: string
           delivery_notes: string | null
@@ -63,6 +73,7 @@ export type Database = {
         }
         Insert: {
           agreement_id?: string | null
+          agreement_link?: string | null
           client_id: string
           created_at?: string
           delivery_notes?: string | null
@@ -77,6 +88,7 @@ export type Database = {
         }
         Update: {
           agreement_id?: string | null
+          agreement_link?: string | null
           client_id?: string
           created_at?: string
           delivery_notes?: string | null
@@ -170,6 +182,7 @@ export type Database = {
           name: string
           notes: string | null
           phone: string | null
+          status: string
         }
         Insert: {
           contact_name?: string | null
@@ -179,6 +192,7 @@ export type Database = {
           name: string
           notes?: string | null
           phone?: string | null
+          status?: string
         }
         Update: {
           contact_name?: string | null
@@ -188,6 +202,7 @@ export type Database = {
           name?: string
           notes?: string | null
           phone?: string | null
+          status?: string
         }
         Relationships: []
       }
@@ -346,6 +361,85 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "monthly_analytics_snapshots_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      monthly_offline_revenue: {
+        Row: {
+          amount_gross: number
+          amount_net: number | null
+          client_id: string
+          created_at: string
+          id: string
+          last_synced_at: string | null
+          month: number
+          notes: string | null
+          source: string
+          year: number
+        }
+        Insert: {
+          amount_gross?: number
+          amount_net?: number | null
+          client_id: string
+          created_at?: string
+          id?: string
+          last_synced_at?: string | null
+          month: number
+          notes?: string | null
+          source?: string
+          year: number
+        }
+        Update: {
+          amount_gross?: number
+          amount_net?: number | null
+          client_id?: string
+          created_at?: string
+          id?: string
+          last_synced_at?: string | null
+          month?: number
+          notes?: string | null
+          source?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monthly_offline_revenue_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      partners: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partners_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"

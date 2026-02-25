@@ -66,8 +66,8 @@ serve(async (req) => {
       fromDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       toDate = fromDate;
     } else {
-      // last 24 months
-      const from = new Date(now.getFullYear(), now.getMonth() - 23, 1);
+      const monthsBack = months === "last36" ? 35 : 23;
+      const from = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
       fromDate = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, "0")}`;
       toDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     }
