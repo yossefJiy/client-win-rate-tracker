@@ -55,7 +55,7 @@ export function useClientIntegration(clientId?: string) {
 export function useUpsertClientIntegration() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (integration: { client_id: string; poconverto_client_key?: string; shop_domain?: string }) => {
+    mutationFn: async (integration: { client_id: string; poconverto_client_key?: string; shop_domain?: string; icount_company_id?: string; icount_api_token?: string }) => {
       const { data: existing } = await supabase
         .from("client_integrations" as any)
         .select("id")
@@ -133,6 +133,23 @@ export function useSyncPoconverto() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["analytics_snapshots"] });
       qc.invalidateQueries({ queryKey: ["analytics_snapshots_multi"] });
+    },
+  });
+}
+
+export function useSyncIcount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ clientId, year, month }: { clientId: string; year?: number; month?: number }) => {
+      const res = await supabase.functions.invoke("icount-sync", {
+        body: { client_id: clientId, year, month },
+      });
+      if (res.error) throw res.error;
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["offline_revenue"] });
+      qc.invalidateQueries({ queryKey: ["offline_revenue_multi"] });
     },
   });
 }

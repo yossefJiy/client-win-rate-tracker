@@ -19,6 +19,8 @@ export type Database = {
           client_id: string
           created_at: string
           google_ads_customer_id: string | null
+          icount_api_token: string | null
+          icount_company_id: string | null
           id: string
           meta_ad_account_id: string | null
           poconverto_client_key: string | null
@@ -29,6 +31,8 @@ export type Database = {
           client_id: string
           created_at?: string
           google_ads_customer_id?: string | null
+          icount_api_token?: string | null
+          icount_company_id?: string | null
           id?: string
           meta_ad_account_id?: string | null
           poconverto_client_key?: string | null
@@ -39,6 +43,8 @@ export type Database = {
           client_id?: string
           created_at?: string
           google_ads_customer_id?: string | null
+          icount_api_token?: string | null
+          icount_company_id?: string | null
           id?: string
           meta_ad_account_id?: string | null
           poconverto_client_key?: string | null
@@ -425,17 +431,43 @@ export type Database = {
           ad_spend_meta: number | null
           ad_spend_tiktok: number | null
           ad_spend_total: number | null
+          avg_order_value: number | null
+          avg_session_duration: number | null
+          blended_roas: number | null
+          bounce_rate: number | null
           client_id: string
+          conversion_rate: number | null
           created_at: string
           discounts: number | null
+          google_clicks: number | null
+          google_cpc: number | null
+          google_cpm: number | null
+          google_impressions: number | null
+          google_roas: number | null
           gross_sales: number | null
           id: string
           last_synced_at: string | null
+          mer: number | null
+          meta_clicks: number | null
+          meta_cpc: number | null
+          meta_cpm: number | null
+          meta_impressions: number | null
+          meta_roas: number | null
           month: number
           net_sales: number | null
+          new_customers: number | null
           orders: number | null
+          page_views: number | null
           refunds: number | null
+          returning_customers: number | null
           sessions: number | null
+          tiktok_clicks: number | null
+          tiktok_cpc: number | null
+          tiktok_cpm: number | null
+          tiktok_impressions: number | null
+          tiktok_roas: number | null
+          total_ad_clicks: number | null
+          total_ad_impressions: number | null
           year: number
         }
         Insert: {
@@ -443,17 +475,43 @@ export type Database = {
           ad_spend_meta?: number | null
           ad_spend_tiktok?: number | null
           ad_spend_total?: number | null
+          avg_order_value?: number | null
+          avg_session_duration?: number | null
+          blended_roas?: number | null
+          bounce_rate?: number | null
           client_id: string
+          conversion_rate?: number | null
           created_at?: string
           discounts?: number | null
+          google_clicks?: number | null
+          google_cpc?: number | null
+          google_cpm?: number | null
+          google_impressions?: number | null
+          google_roas?: number | null
           gross_sales?: number | null
           id?: string
           last_synced_at?: string | null
+          mer?: number | null
+          meta_clicks?: number | null
+          meta_cpc?: number | null
+          meta_cpm?: number | null
+          meta_impressions?: number | null
+          meta_roas?: number | null
           month: number
           net_sales?: number | null
+          new_customers?: number | null
           orders?: number | null
+          page_views?: number | null
           refunds?: number | null
+          returning_customers?: number | null
           sessions?: number | null
+          tiktok_clicks?: number | null
+          tiktok_cpc?: number | null
+          tiktok_cpm?: number | null
+          tiktok_impressions?: number | null
+          tiktok_roas?: number | null
+          total_ad_clicks?: number | null
+          total_ad_impressions?: number | null
           year: number
         }
         Update: {
@@ -461,17 +519,43 @@ export type Database = {
           ad_spend_meta?: number | null
           ad_spend_tiktok?: number | null
           ad_spend_total?: number | null
+          avg_order_value?: number | null
+          avg_session_duration?: number | null
+          blended_roas?: number | null
+          bounce_rate?: number | null
           client_id?: string
+          conversion_rate?: number | null
           created_at?: string
           discounts?: number | null
+          google_clicks?: number | null
+          google_cpc?: number | null
+          google_cpm?: number | null
+          google_impressions?: number | null
+          google_roas?: number | null
           gross_sales?: number | null
           id?: string
           last_synced_at?: string | null
+          mer?: number | null
+          meta_clicks?: number | null
+          meta_cpc?: number | null
+          meta_cpm?: number | null
+          meta_impressions?: number | null
+          meta_roas?: number | null
           month?: number
           net_sales?: number | null
+          new_customers?: number | null
           orders?: number | null
+          page_views?: number | null
           refunds?: number | null
+          returning_customers?: number | null
           sessions?: number | null
+          tiktok_clicks?: number | null
+          tiktok_cpc?: number | null
+          tiktok_cpm?: number | null
+          tiktok_impressions?: number | null
+          tiktok_roas?: number | null
+          total_ad_clicks?: number | null
+          total_ad_impressions?: number | null
           year?: number
         }
         Relationships: [
@@ -490,6 +574,8 @@ export type Database = {
           amount_net: number | null
           client_id: string
           created_at: string
+          icount_doc_id: string | null
+          icount_doc_type: string | null
           id: string
           last_synced_at: string | null
           month: number
@@ -502,6 +588,8 @@ export type Database = {
           amount_net?: number | null
           client_id: string
           created_at?: string
+          icount_doc_id?: string | null
+          icount_doc_type?: string | null
           id?: string
           last_synced_at?: string | null
           month: number
@@ -514,6 +602,8 @@ export type Database = {
           amount_net?: number | null
           client_id?: string
           created_at?: string
+          icount_doc_id?: string | null
+          icount_doc_type?: string | null
           id?: string
           last_synced_at?: string | null
           month?: number
