@@ -14,6 +14,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      client_integrations: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          poconverto_client_key: string | null
+          shop_domain: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          poconverto_client_key?: string | null
+          shop_domain?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          poconverto_client_key?: string | null
+          shop_domain?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_integrations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_monthly_services: {
         Row: {
           agreement_id: string | null
@@ -81,6 +113,54 @@ export type Database = {
           },
         ]
       }
+      client_service_templates: {
+        Row: {
+          client_id: string
+          created_at: string
+          default_fee: number
+          default_status: string
+          id: string
+          is_active: boolean
+          platform: string | null
+          service_catalog_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          default_fee?: number
+          default_status?: string
+          id?: string
+          is_active?: boolean
+          platform?: string | null
+          service_catalog_id: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          default_fee?: number
+          default_status?: string
+          id?: string
+          is_active?: boolean
+          platform?: string | null
+          service_catalog_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_service_templates_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_service_templates_service_catalog_id_fkey"
+            columns: ["service_catalog_id"]
+            isOneToOne: false
+            referencedRelation: "service_catalog"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           contact_name: string | null
@@ -110,6 +190,168 @@ export type Database = {
           phone?: string | null
         }
         Relationships: []
+      }
+      commission_plans: {
+        Row: {
+          base: string
+          client_id: string
+          created_at: string
+          currency: string
+          id: string
+          is_active: boolean
+          minimum_fee: number
+          name: string
+        }
+        Insert: {
+          base?: string
+          client_id: string
+          created_at?: string
+          currency?: string
+          id?: string
+          is_active?: boolean
+          minimum_fee?: number
+          name: string
+        }
+        Update: {
+          base?: string
+          client_id?: string
+          created_at?: string
+          currency?: string
+          id?: string
+          is_active?: boolean
+          minimum_fee?: number
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_plans_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commission_tiers: {
+        Row: {
+          created_at: string
+          id: string
+          order_index: number
+          plan_id: string
+          rate_percent: number
+          threshold_sales: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          order_index: number
+          plan_id: string
+          rate_percent: number
+          threshold_sales?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          order_index?: number
+          plan_id?: string
+          rate_percent?: number
+          threshold_sales?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_tiers_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "commission_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      integration_settings: {
+        Row: {
+          created_at: string
+          id: string
+          key: string
+          value: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          key: string
+          value?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          key?: string
+          value?: string | null
+        }
+        Relationships: []
+      }
+      monthly_analytics_snapshots: {
+        Row: {
+          ad_spend_google: number | null
+          ad_spend_meta: number | null
+          ad_spend_tiktok: number | null
+          ad_spend_total: number | null
+          client_id: string
+          created_at: string
+          discounts: number | null
+          gross_sales: number | null
+          id: string
+          last_synced_at: string | null
+          month: number
+          net_sales: number | null
+          orders: number | null
+          refunds: number | null
+          sessions: number | null
+          year: number
+        }
+        Insert: {
+          ad_spend_google?: number | null
+          ad_spend_meta?: number | null
+          ad_spend_tiktok?: number | null
+          ad_spend_total?: number | null
+          client_id: string
+          created_at?: string
+          discounts?: number | null
+          gross_sales?: number | null
+          id?: string
+          last_synced_at?: string | null
+          month: number
+          net_sales?: number | null
+          orders?: number | null
+          refunds?: number | null
+          sessions?: number | null
+          year: number
+        }
+        Update: {
+          ad_spend_google?: number | null
+          ad_spend_meta?: number | null
+          ad_spend_tiktok?: number | null
+          ad_spend_total?: number | null
+          client_id?: string
+          created_at?: string
+          discounts?: number | null
+          gross_sales?: number | null
+          id?: string
+          last_synced_at?: string | null
+          month?: number
+          net_sales?: number | null
+          orders?: number | null
+          refunds?: number | null
+          sessions?: number | null
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monthly_analytics_snapshots_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       payouts: {
         Row: {
@@ -353,21 +595,27 @@ export type Database = {
       }
       service_catalog: {
         Row: {
+          billing: string
           created_at: string
+          currency: string
           default_monthly_fee: number | null
           id: string
           name: string
           notes: string | null
         }
         Insert: {
+          billing?: string
           created_at?: string
+          currency?: string
           default_monthly_fee?: number | null
           id?: string
           name: string
           notes?: string | null
         }
         Update: {
+          billing?: string
           created_at?: string
+          currency?: string
           default_monthly_fee?: number | null
           id?: string
           name?: string

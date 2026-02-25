@@ -1,0 +1,403 @@
+import { useState } from "react";
+import { useClients } from "@/hooks/useClients";
+import { useAnalyticsSnapshotsByYears, useClientIntegration, useSyncPoconverto, useUpsertClientIntegration, useIntegrationSettings, useUpsertIntegrationSetting } from "@/hooks/useAnalytics";
+import { useCommissionPlans, calculateCommission } from "@/hooks/useCommissionPlans";
+import { useMonthlyServicesByYear } from "@/hooks/useServices";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RefreshCw, Settings, TrendingUp, TrendingDown } from "lucide-react";
+import { toast } from "sonner";
+
+const monthNames = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
+
+function fmt(n: number | null | undefined): string {
+  if (n == null || isNaN(n)) return "—";
+  return `₪${Number(n).toLocaleString()}`;
+}
+
+function pct(n: number | null | undefined): string {
+  if (n == null || isNaN(n) || !isFinite(n)) return "—";
+  return `${n > 0 ? "+" : ""}${n.toFixed(1)}%`;
+}
+
+export default function AnalyticsPage() {
+  const { data: clients } = useClients();
+  const [clientId, setClientId] = useState("");
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState(currentYear.toString());
+  const yearNum = parseInt(year);
+
+  const { data: snapshots } = useAnalyticsSnapshotsByYears(clientId, [yearNum, yearNum - 1]);
+  const { data: plans } = useCommissionPlans(clientId);
+  const { data: services } = useMonthlyServicesByYear(clientId, yearNum);
+  const { data: integration } = useClientIntegration(clientId);
+  const sync = useSyncPoconverto();
+  const upsertIntegration = useUpsertClientIntegration();
+  const { data: settings } = useIntegrationSettings();
+  const upsertSetting = useUpsertIntegrationSetting();
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [drillMonth, setDrillMonth] = useState<number | null>(null);
+  const [settingsForm, setSettingsForm] = useState({ base_url: "", api_key: "", client_key: "", shop_domain: "" });
+
+  const years = Array.from({ length: 5 }, (_, i) => (currentYear - 2 + i).toString());
+
+  const thisYearSnapshots = snapshots?.filter((s: any) => s.year === yearNum) || [];
+  const lastYearSnapshots = snapshots?.filter((s: any) => s.year === yearNum - 1) || [];
+
+  const getSnapshot = (month: number, yr: number = yearNum) => {
+    const list = yr === yearNum ? thisYearSnapshots : lastYearSnapshots;
+    return list.find((s: any) => s.month === month);
+  };
+
+  const activePlan = plans?.find((p: any) => p.is_active);
+  const tiers = activePlan?.commission_tiers?.sort((a: any, b: any) => a.order_index - b.order_index) || [];
+
+  const getServiceFees = (month: number) =>
+    services?.filter((s: any) => s.month === month).reduce((sum: number, s: any) => sum + Number(s.monthly_fee), 0) || 0;
+
+  const getCommission = (month: number) => {
+    const snap = getSnapshot(month);
+    if (!snap || !activePlan) return null;
+    return calculateCommission(Number(snap.net_sales), tiers, Number(activePlan.minimum_fee));
+  };
+
+  const yoyPct = (current: number | undefined, prev: number | undefined) => {
+    if (!current || !prev || prev === 0) return null;
+    return ((current - prev) / prev) * 100;
+  };
+
+  // Current month
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentSnap = getSnapshot(currentMonth);
+  const lastYearSnap = getSnapshot(currentMonth, yearNum - 1);
+  const currentCommission = getCommission(currentMonth);
+  const currentMER = currentSnap && Number(currentSnap.ad_spend_total) > 0
+    ? Number(currentSnap.net_sales) / Number(currentSnap.ad_spend_total) : null;
+
+  const openSettings = () => {
+    setSettingsForm({
+      base_url: settings?.poconverto_base_url || "",
+      api_key: settings?.poconverto_api_key || "",
+      client_key: (integration as any)?.poconverto_client_key || "",
+      shop_domain: (integration as any)?.shop_domain || "",
+    });
+    setSettingsOpen(true);
+  };
+
+  const saveSettings = async () => {
+    try {
+      if (settingsForm.base_url) await upsertSetting.mutateAsync({ key: "poconverto_base_url", value: settingsForm.base_url });
+      if (settingsForm.api_key) await upsertSetting.mutateAsync({ key: "poconverto_api_key", value: settingsForm.api_key });
+      if (clientId) {
+        await upsertIntegration.mutateAsync({
+          client_id: clientId,
+          poconverto_client_key: settingsForm.client_key || undefined,
+          shop_domain: settingsForm.shop_domain || undefined,
+        });
+      }
+      toast.success("ההגדרות נשמרו");
+      setSettingsOpen(false);
+    } catch { toast.error("שגיאה בשמירת הגדרות"); }
+  };
+
+  const handleSync = async (months: "current" | "last24") => {
+    if (!clientId) { toast.error("בחר לקוח"); return; }
+    try {
+      await sync.mutateAsync({ clientId, months });
+      toast.success(months === "current" ? "חודש נוכחי סונכרן" : "24 חודשים סונכרנו");
+    } catch { toast.error("שגיאה בסנכרון"); }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">אנליטיקס</h1>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={openSettings}><Settings className="h-4 w-4 ml-1" />הגדרות</Button>
+          {clientId && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => handleSync("current")} disabled={sync.isPending}>
+                <RefreshCw className={`h-4 w-4 ml-1 ${sync.isPending ? "animate-spin" : ""}`} />סנכרן חודש נוכחי
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleSync("last24")} disabled={sync.isPending}>
+                <RefreshCw className={`h-4 w-4 ml-1 ${sync.isPending ? "animate-spin" : ""}`} />סנכרן 24 חודשים
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="flex gap-3 mb-6">
+        <Select value={clientId} onValueChange={setClientId}>
+          <SelectTrigger className="w-48"><SelectValue placeholder="בחר לקוח" /></SelectTrigger>
+          <SelectContent>{clients?.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+        </Select>
+        <Select value={year} onValueChange={setYear}>
+          <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+          <SelectContent>{years.map((y) => <SelectItem key={y} value={y}>{y}</SelectItem>)}</SelectContent>
+        </Select>
+      </div>
+
+      {clientId && (
+        <Tabs defaultValue="this_month" dir="rtl">
+          <TabsList>
+            <TabsTrigger value="this_month">החודש</TabsTrigger>
+            <TabsTrigger value="year_view">מבט שנתי</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="this_month">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">מכירות נטו</CardTitle></CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{currentSnap ? fmt(currentSnap.net_sales) : "—"}</p>
+                  {lastYearSnap && currentSnap && (
+                    <YoYBadge value={yoyPct(currentSnap.net_sales, lastYearSnap.net_sales)} />
+                  )}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">הוצאות פרסום</CardTitle></CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{currentSnap ? fmt(currentSnap.ad_spend_total) : "—"}</p>
+                  {currentSnap && (
+                    <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                      {Number(currentSnap.ad_spend_meta) > 0 && <div>Meta: {fmt(currentSnap.ad_spend_meta)}</div>}
+                      {Number(currentSnap.ad_spend_google) > 0 && <div>Google: {fmt(currentSnap.ad_spend_google)}</div>}
+                      {Number(currentSnap.ad_spend_tiktok) > 0 && <div>TikTok: {fmt(currentSnap.ad_spend_tiktok)}</div>}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">MER</CardTitle></CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{currentMER ? currentMER.toFixed(2) : "—"}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">עמלה לתשלום</CardTitle></CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{currentCommission ? fmt(currentCommission.finalDue) : "—"}</p>
+                  {currentCommission && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {currentCommission.isMinimum ? "מינימום" : `${currentCommission.tierUsed?.rate_percent}%`}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {currentSnap && (
+              <div className="grid gap-4 md:grid-cols-3 mb-6">
+                {currentSnap.orders != null && (
+                  <Card>
+                    <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">הזמנות</CardTitle></CardHeader>
+                    <CardContent><p className="text-xl font-bold">{currentSnap.orders}</p></CardContent>
+                  </Card>
+                )}
+                {currentSnap.sessions != null && Number(currentSnap.sessions) > 0 && (
+                  <Card>
+                    <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">סשנים</CardTitle></CardHeader>
+                    <CardContent><p className="text-xl font-bold">{Number(currentSnap.sessions).toLocaleString()}</p></CardContent>
+                  </Card>
+                )}
+                {currentSnap.sessions != null && currentSnap.orders != null && Number(currentSnap.sessions) > 0 && (
+                  <Card>
+                    <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">CVR</CardTitle></CardHeader>
+                    <CardContent>
+                      <p className="text-xl font-bold">{((currentSnap.orders / Number(currentSnap.sessions)) * 100).toFixed(2)}%</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="year_view">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>חודש</TableHead>
+                  <TableHead>מכירות נטו</TableHead>
+                  <TableHead>YoY מכירות</TableHead>
+                  <TableHead>הוצאות פרסום</TableHead>
+                  <TableHead>YoY פרסום</TableHead>
+                  <TableHead>MER</TableHead>
+                  <TableHead>עמלה</TableHead>
+                  <TableHead>דמי שירות</TableHead>
+                  <TableHead className="w-16"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {monthNames.map((name, i) => {
+                  const month = i + 1;
+                  const snap = getSnapshot(month);
+                  const prevSnap = getSnapshot(month, yearNum - 1);
+                  const comm = getCommission(month);
+                  const fees = getServiceFees(month);
+                  const mer = snap && Number(snap.ad_spend_total) > 0
+                    ? (Number(snap.net_sales) / Number(snap.ad_spend_total)).toFixed(2) : "—";
+
+                  return (
+                    <TableRow key={month} className={month === currentMonth && yearNum === currentYear ? "bg-muted/30" : ""}>
+                      <TableCell className="font-medium">{name}</TableCell>
+                      <TableCell>{snap ? fmt(snap.net_sales) : "—"}</TableCell>
+                      <TableCell>
+                        <YoYBadge value={yoyPct(snap?.net_sales, prevSnap?.net_sales)} />
+                      </TableCell>
+                      <TableCell>{snap ? fmt(snap.ad_spend_total) : "—"}</TableCell>
+                      <TableCell>
+                        <YoYBadge value={yoyPct(snap?.ad_spend_total, prevSnap?.ad_spend_total)} />
+                      </TableCell>
+                      <TableCell>{mer}</TableCell>
+                      <TableCell>
+                        {comm ? (
+                          <span title={comm.isMinimum ? "מינימום" : `${comm.tierUsed?.rate_percent}%`}>
+                            {fmt(comm.finalDue)}
+                          </span>
+                        ) : "—"}
+                      </TableCell>
+                      <TableCell>{fees > 0 ? fmt(fees) : "—"}</TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="sm" onClick={() => setDrillMonth(month)}>פרט</Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell className="font-bold">סה״כ</TableCell>
+                  <TableCell className="font-bold">{fmt(thisYearSnapshots.reduce((s: number, x: any) => s + Number(x.net_sales || 0), 0))}</TableCell>
+                  <TableCell />
+                  <TableCell className="font-bold">{fmt(thisYearSnapshots.reduce((s: number, x: any) => s + Number(x.ad_spend_total || 0), 0))}</TableCell>
+                  <TableCell />
+                  <TableCell />
+                  <TableCell className="font-bold">
+                    {fmt(monthNames.reduce((s, _, i) => s + (getCommission(i + 1)?.finalDue || 0), 0))}
+                  </TableCell>
+                  <TableCell className="font-bold">
+                    {fmt(Array.from({ length: 12 }, (_, i) => getServiceFees(i + 1)).reduce((a, b) => a + b, 0))}
+                  </TableCell>
+                  <TableCell />
+                </TableRow>
+              </TableFooter>
+            </Table>
+          </TabsContent>
+        </Tabs>
+      )}
+
+      {/* Drilldown dialog */}
+      <Dialog open={drillMonth !== null} onOpenChange={() => setDrillMonth(null)}>
+        <DialogContent dir="rtl" className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{drillMonth ? `${monthNames[drillMonth - 1]} ${year}` : ""} — פירוט</DialogTitle>
+          </DialogHeader>
+          {drillMonth && <MonthDrilldown
+            snapshot={getSnapshot(drillMonth)}
+            commission={getCommission(drillMonth)}
+            services={services?.filter((s: any) => s.month === drillMonth) || []}
+            activePlan={activePlan}
+          />}
+        </DialogContent>
+      </Dialog>
+
+      {/* Settings dialog */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent dir="rtl">
+          <DialogHeader><DialogTitle>הגדרות Poconverto</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <Input placeholder="Base URL" value={settingsForm.base_url} onChange={(e) => setSettingsForm({ ...settingsForm, base_url: e.target.value })} />
+            <Input placeholder="API Key" type="password" value={settingsForm.api_key} onChange={(e) => setSettingsForm({ ...settingsForm, api_key: e.target.value })} />
+            <Input placeholder="Client Key (ללקוח הנבחר)" value={settingsForm.client_key} onChange={(e) => setSettingsForm({ ...settingsForm, client_key: e.target.value })} />
+            <Input placeholder="Shop Domain (אופציונלי)" value={settingsForm.shop_domain} onChange={(e) => setSettingsForm({ ...settingsForm, shop_domain: e.target.value })} />
+            <Button onClick={saveSettings} className="w-full">שמור הגדרות</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function YoYBadge({ value }: { value: number | null }) {
+  if (value == null) return <span className="text-muted-foreground text-xs">—</span>;
+  const isPositive = value > 0;
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${isPositive ? "text-green-600" : "text-destructive"}`}>
+      {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+      {pct(value)}
+    </span>
+  );
+}
+
+function MonthDrilldown({ snapshot, commission, services, activePlan }: {
+  snapshot: any;
+  commission: ReturnType<typeof calculateCommission> | null;
+  services: any[];
+  activePlan: any;
+}) {
+  return (
+    <div className="space-y-4">
+      {snapshot && (
+        <div>
+          <h4 className="font-medium mb-2">הוצאות פרסום לפי ערוץ</h4>
+          <div className="space-y-1 text-sm">
+            {Number(snapshot.ad_spend_meta) > 0 && <div className="flex justify-between"><span>Meta</span><span>{fmt(snapshot.ad_spend_meta)}</span></div>}
+            {Number(snapshot.ad_spend_google) > 0 && <div className="flex justify-between"><span>Google</span><span>{fmt(snapshot.ad_spend_google)}</span></div>}
+            {Number(snapshot.ad_spend_tiktok) > 0 && <div className="flex justify-between"><span>TikTok</span><span>{fmt(snapshot.ad_spend_tiktok)}</span></div>}
+            <div className="flex justify-between font-medium border-t pt-1"><span>סה״כ</span><span>{fmt(snapshot.ad_spend_total)}</span></div>
+          </div>
+        </div>
+      )}
+
+      {commission && activePlan && (
+        <div>
+          <h4 className="font-medium mb-2">חישוב עמלה</h4>
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between"><span>מכירות נטו</span><span>{fmt(snapshot?.net_sales)}</span></div>
+            {commission.tierUsed && (
+              <div className="flex justify-between"><span>דרגה: ≥{fmt(commission.tierUsed.threshold_sales)}</span><span>{commission.tierUsed.rate_percent}%</span></div>
+            )}
+            <div className="flex justify-between"><span>עמלה מחושבת</span><span>{fmt(commission.commission)}</span></div>
+            <div className="flex justify-between"><span>מינימום</span><span>{fmt(activePlan.minimum_fee)}</span></div>
+            <div className="flex justify-between font-medium border-t pt-1">
+              <span>לתשלום</span>
+              <span>{fmt(commission.finalDue)} {commission.isMinimum && <Badge variant="outline" className="mr-1 text-xs">מינימום</Badge>}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {services.length > 0 && (
+        <div>
+          <h4 className="font-medium mb-2">שירותים חודשיים</h4>
+          <div className="space-y-1 text-sm">
+            {services.map((s: any) => (
+              <div key={s.id} className="flex justify-between">
+                <span>{s.service_catalog?.name || s.service_name} {s.platform && `(${s.platform})`}</span>
+                <span>{fmt(s.monthly_fee)}</span>
+              </div>
+            ))}
+            <div className="flex justify-between font-medium border-t pt-1">
+              <span>סה״כ שירותים</span>
+              <span>{fmt(services.reduce((sum: number, s: any) => sum + Number(s.monthly_fee), 0))}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!snapshot && !commission && services.length === 0 && (
+        <p className="text-muted-foreground text-center">אין נתונים לחודש זה</p>
+      )}
+    </div>
+  );
+}
