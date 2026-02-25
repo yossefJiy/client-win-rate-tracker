@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useClients } from "@/hooks/useClients";
 import { useSelectedClient } from "@/hooks/useSelectedClient";
-import { useAnalyticsSnapshotsByYears, useClientIntegration, useSyncPoconverto, useUpsertClientIntegration, useIntegrationSettings, useUpsertIntegrationSetting } from "@/hooks/useAnalytics";
+import { useAnalyticsSnapshotsByYears, useClientIntegration, useSyncPoconverto, useSyncIcount, useUpsertClientIntegration, useIntegrationSettings, useUpsertIntegrationSetting } from "@/hooks/useAnalytics";
 import { useCommissionPlans, calculateCommission } from "@/hooks/useCommissionPlans";
 import { useMonthlyServicesByYear } from "@/hooks/useServices";
 import { useOfflineRevenueMultiYear, useUpsertOfflineRevenue } from "@/hooks/useOfflineRevenue";
@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, Settings, TrendingUp, TrendingDown, Plus } from "lucide-react";
+import { RefreshCw, Settings, TrendingUp, TrendingDown, Plus, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 const monthNames = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
@@ -42,6 +42,7 @@ export default function AnalyticsPage() {
   const { data: integration } = useClientIntegration(clientId);
   const { data: offlineRevenue } = useOfflineRevenueMultiYear(clientId, [yearNum, yearNum - 1]);
   const sync = useSyncPoconverto();
+  const icountSync = useSyncIcount();
   const upsertIntegration = useUpsertClientIntegration();
   const { data: settings } = useIntegrationSettings();
   const upsertSetting = useUpsertIntegrationSetting();
@@ -49,7 +50,7 @@ export default function AnalyticsPage() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [drillMonth, setDrillMonth] = useState<number | null>(null);
-  const [settingsForm, setSettingsForm] = useState({ base_url: "", api_key: "", client_key: "", shop_domain: "" });
+  const [settingsForm, setSettingsForm] = useState({ base_url: "", api_key: "", client_key: "", shop_domain: "", icount_company_id: "", icount_api_token: "" });
   const [offlineDialog, setOfflineDialog] = useState(false);
   const [offlineForm, setOfflineForm] = useState({ month: (new Date().getMonth() + 1).toString(), amount_gross: "", amount_net: "", source: "icount_other", notes: "" });
 
@@ -99,6 +100,8 @@ export default function AnalyticsPage() {
       api_key: settings?.poconverto_api_key || "",
       client_key: (integration as any)?.poconverto_client_key || "",
       shop_domain: (integration as any)?.shop_domain || "",
+      icount_company_id: (integration as any)?.icount_company_id || "",
+      icount_api_token: (integration as any)?.icount_api_token || "",
     });
     setSettingsOpen(true);
   };
@@ -112,7 +115,9 @@ export default function AnalyticsPage() {
           client_id: clientId,
           poconverto_client_key: settingsForm.client_key || undefined,
           shop_domain: settingsForm.shop_domain || undefined,
-        });
+          icount_company_id: settingsForm.icount_company_id || undefined,
+          icount_api_token: settingsForm.icount_api_token || undefined,
+        } as any);
       }
       toast.success("ההגדרות נשמרו");
       setSettingsOpen(false);
@@ -158,6 +163,14 @@ export default function AnalyticsPage() {
             <>
               <Button variant="outline" size="sm" onClick={() => setOfflineDialog(true)}>
                 <Plus className="h-4 w-4 ml-1" />הכנסה אופליין
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => {
+                if (!clientId) return;
+                icountSync.mutateAsync({ clientId, year: yearNum, month: currentMonth })
+                  .then(() => toast.success("אייקאונט סונכרן"))
+                  .catch(() => toast.error("שגיאה בסנכרון אייקאונט"));
+              }} disabled={icountSync.isPending}>
+                <FileText className={`h-4 w-4 ml-1 ${icountSync.isPending ? "animate-spin" : ""}`} />סנכרון iCount
               </Button>
               <Button variant="outline" size="sm" onClick={() => handleSync("current")} disabled={sync.isPending}>
                 <RefreshCw className={`h-4 w-4 ml-1 ${sync.isPending ? "animate-spin" : ""}`} />חודש נוכחי
@@ -368,12 +381,24 @@ export default function AnalyticsPage() {
       {/* Settings dialog */}
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent dir="rtl">
-          <DialogHeader><DialogTitle>הגדרות Poconverto</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <Input placeholder="Base URL" value={settingsForm.base_url} onChange={(e) => setSettingsForm({ ...settingsForm, base_url: e.target.value })} />
-            <Input placeholder="API Key" type="password" value={settingsForm.api_key} onChange={(e) => setSettingsForm({ ...settingsForm, api_key: e.target.value })} />
-            <Input placeholder="Client Key (ללקוח הנבחר)" value={settingsForm.client_key} onChange={(e) => setSettingsForm({ ...settingsForm, client_key: e.target.value })} />
-            <Input placeholder="Shop Domain (אופציונלי)" value={settingsForm.shop_domain} onChange={(e) => setSettingsForm({ ...settingsForm, shop_domain: e.target.value })} />
+          <DialogHeader><DialogTitle>הגדרות אינטגרציות</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <h4 className="font-medium text-sm mb-2">Poconverto</h4>
+              <div className="space-y-2">
+                <Input placeholder="Base URL" value={settingsForm.base_url} onChange={(e) => setSettingsForm({ ...settingsForm, base_url: e.target.value })} />
+                <Input placeholder="API Key" type="password" value={settingsForm.api_key} onChange={(e) => setSettingsForm({ ...settingsForm, api_key: e.target.value })} />
+                <Input placeholder="Client Key (ללקוח הנבחר)" value={settingsForm.client_key} onChange={(e) => setSettingsForm({ ...settingsForm, client_key: e.target.value })} />
+                <Input placeholder="Shop Domain (אופציונלי)" value={settingsForm.shop_domain} onChange={(e) => setSettingsForm({ ...settingsForm, shop_domain: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <h4 className="font-medium text-sm mb-2">iCount (חשבוניות)</h4>
+              <div className="space-y-2">
+                <Input placeholder="Company ID" value={settingsForm.icount_company_id} onChange={(e) => setSettingsForm({ ...settingsForm, icount_company_id: e.target.value })} />
+                <Input placeholder="API Token" type="password" value={settingsForm.icount_api_token} onChange={(e) => setSettingsForm({ ...settingsForm, icount_api_token: e.target.value })} />
+              </div>
+            </div>
             <Button onClick={saveSettings} className="w-full">שמור הגדרות</Button>
           </div>
         </DialogContent>
@@ -451,12 +476,36 @@ function MonthDrilldown({ snapshot, commission, services, activePlan, offlineIte
           <div>
             <h4 className="font-medium mb-2">הוצאות פרסום לפי ערוץ</h4>
             <div className="space-y-1 text-sm">
-              {Number(snapshot.ad_spend_meta) > 0 && <div className="flex justify-between"><span>Meta</span><span>{fmt(snapshot.ad_spend_meta)}</span></div>}
-              {Number(snapshot.ad_spend_google) > 0 && <div className="flex justify-between"><span>Google</span><span>{fmt(snapshot.ad_spend_google)}</span></div>}
-              {Number(snapshot.ad_spend_tiktok) > 0 && <div className="flex justify-between"><span>TikTok</span><span>{fmt(snapshot.ad_spend_tiktok)}</span></div>}
+              {Number(snapshot.ad_spend_meta) > 0 && (
+                <div className="flex justify-between"><span>Meta: {fmt(snapshot.ad_spend_meta)}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {snapshot.meta_roas > 0 && `ROAS ${Number(snapshot.meta_roas).toFixed(2)}`}
+                    {snapshot.meta_clicks > 0 && ` | ${snapshot.meta_clicks} clicks`}
+                  </span>
+                </div>
+              )}
+              {Number(snapshot.ad_spend_google) > 0 && (
+                <div className="flex justify-between"><span>Google: {fmt(snapshot.ad_spend_google)}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {snapshot.google_roas > 0 && `ROAS ${Number(snapshot.google_roas).toFixed(2)}`}
+                    {snapshot.google_clicks > 0 && ` | ${snapshot.google_clicks} clicks`}
+                  </span>
+                </div>
+              )}
+              {Number(snapshot.ad_spend_tiktok) > 0 && (
+                <div className="flex justify-between"><span>TikTok: {fmt(snapshot.ad_spend_tiktok)}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {snapshot.tiktok_roas > 0 && `ROAS ${Number(snapshot.tiktok_roas).toFixed(2)}`}
+                    {snapshot.tiktok_clicks > 0 && ` | ${snapshot.tiktok_clicks} clicks`}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between font-medium border-t pt-1"><span>סה״כ</span><span>{fmt(snapshot.ad_spend_total)}</span></div>
               {Number(snapshot.ad_spend_total) > 0 && Number(snapshot.net_sales) > 0 && (
                 <div className="flex justify-between text-muted-foreground"><span>MER</span><span>{(Number(snapshot.net_sales) / Number(snapshot.ad_spend_total)).toFixed(2)}</span></div>
+              )}
+              {snapshot.blended_roas > 0 && (
+                <div className="flex justify-between text-muted-foreground"><span>Blended ROAS</span><span>{Number(snapshot.blended_roas).toFixed(2)}</span></div>
               )}
             </div>
           </div>
