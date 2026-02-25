@@ -119,15 +119,15 @@ serve(async (req) => {
             switch (item.platform) {
               case "shopify":
               case "woocommerce":
-                row.gross_sales = data.summary?.grossSales || data.summary?.totalGross || metrics.totalRevenue || 0;
-                row.net_sales = data.summary?.netSales || data.summary?.totalRevenue || 0;
-                row.orders = data.summary?.totalOrders || metrics.totalOrders || 0;
-                row.sessions = data.summary?.sessions || metrics.sessions || 0;
-                row.avg_order_value = data.summary?.avgOrderValue || metrics.avgOrderValue || 0;
-                row.conversion_rate = data.summary?.conversionRate || metrics.conversionRate || 0;
-                row.new_customers = data.summary?.uniqueCustomers || 0;
-                row.discounts = data.summary?.discounts || 0;
-                row.refunds = data.summary?.returns || 0;
+                row.gross_sales = data.total_revenue || metrics.total_revenue || data.summary?.grossSales || 0;
+                row.net_sales = data.total_revenue || metrics.total_revenue || data.summary?.netSales || 0;
+                row.orders = data.orders_count || metrics.orders_count || data.summary?.totalOrders || 0;
+                row.avg_order_value = data.average_order_value || metrics.average_order_value || data.summary?.avgOrderValue || 0;
+                row.conversion_rate = parseFloat(data.conversion_rate || metrics.conversion_rate || data.summary?.conversionRate || "0");
+                row.new_customers = data.customers_count || metrics.customers_count || data.summary?.uniqueCustomers || 0;
+                row.sessions = data.sessions || metrics.sessions || row.sessions || 0;
+                row.discounts = data.discounts || data.summary?.discounts || 0;
+                row.refunds = data.refunds || data.summary?.returns || 0;
                 break;
               case "google_ads": {
                 const spent = data.campaigns?.reduce((s: number, c: any) => s + (c.spent || 0), 0) || metrics.total_spent || 0;
@@ -214,6 +214,26 @@ serve(async (req) => {
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Debug action: show raw data for this client
+    if (action === "debug_raw") {
+      const analyticsResult = await fetchFromBridge(convertoApiKey, "analytics_snapshots");
+      if (analyticsResult.success && analyticsResult.data) {
+        const clientData = convertoClientId 
+          ? analyticsResult.data.filter((item: any) => item.client_id === convertoClientId)
+          : analyticsResult.data;
+        // Return first 3 records of each platform for inspection
+        const byPlatform: Record<string, any[]> = {};
+        for (const item of clientData) {
+          const p = item.platform || "unknown";
+          if (!byPlatform[p]) byPlatform[p] = [];
+          if (byPlatform[p].length < 2) byPlatform[p].push(item);
+        }
+        return new Response(JSON.stringify({ platforms: Object.keys(byPlatform), samples: byPlatform, total: clientData.length }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     // Action: fetch specific type
