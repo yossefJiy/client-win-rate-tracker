@@ -123,7 +123,7 @@ export function useUpsertIntegrationSetting() {
 export function useSyncPoconverto() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ clientId, months }: { clientId: string; months: "current" | "last24" }) => {
+    mutationFn: async ({ clientId, months }: { clientId: string; months: "current" | "last24" | "last36" }) => {
       const res = await supabase.functions.invoke("poconverto-sync", {
         body: { client_id: clientId, months },
       });
