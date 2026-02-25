@@ -1,4 +1,4 @@
-import { Users, FileText, DollarSign, Briefcase, FolderOpen, BarChart3, Percent } from "lucide-react";
+import { Users, DollarSign, Briefcase, FolderOpen, BarChart3, Percent } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
@@ -14,7 +14,6 @@ import {
 
 const items = [
   { title: "לקוחות", url: "/clients", icon: Users },
-  { title: "הסכמי אחוזים", url: "/agreements", icon: FileText },
   { title: "תוכניות עמלה", url: "/commission-plans", icon: Percent },
   { title: "תשלומים", url: "/payouts", icon: DollarSign },
   { title: "שירותים חודשיים", url: "/services", icon: Briefcase },

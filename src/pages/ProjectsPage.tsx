@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useClients } from "@/hooks/useClients";
-import { useProjects, useProject, useCreateProject, useUpdateProject, useCreateCheckpoint, useUpdateCheckpoint, PROJECT_TEMPLATES } from "@/hooks/useProjects";
+import { useSelectedClient } from "@/hooks/useSelectedClient";
+import { useProjects, useProject, useCreateProject, useCreateCheckpoint, PROJECT_TEMPLATES } from "@/hooks/useProjects";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,16 +16,16 @@ import { toast } from "sonner";
 const statusLabels: Record<string, string> = { planned: "מתוכנן", active: "פעיל", on_hold: "מושהה", completed: "הושלם", canceled: "בוטל" };
 const checkStatusLabels: Record<string, string> = { on_track: "בתוואי", at_risk: "בסיכון", off_track: "חורג" };
 const checkStatusColors: Record<string, string> = { on_track: "bg-green-500", at_risk: "bg-yellow-500", off_track: "bg-red-500" };
+const monthNames = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
 
 export default function ProjectsPage() {
   const { data: clients } = useClients();
-  const [clientId, setClientId] = useState("");
+  const { clientId, setClientId } = useSelectedClient();
   const { data: projects } = useProjects(clientId);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const { data: project } = useProject(selectedProjectId || undefined);
   const createProject = useCreateProject();
   const createCheckpoint = useCreateCheckpoint();
-  const updateCheckpoint = useUpdateCheckpoint();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ name: "", description: "", start_year: new Date().getFullYear().toString(), start_month: (new Date().getMonth() + 1).toString(), template: "" });
@@ -32,19 +33,14 @@ export default function ProjectsPage() {
   const [cpForm, setCpForm] = useState({ status: "on_track", what_was_done: "", blockers: "", next_month_focus: "" });
 
   const months = Array.from({ length: 12 }, (_, i) => i + 1);
-  const monthNames = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
 
   const handleCreateProject = async () => {
     if (!form.name.trim()) { toast.error("שם פרויקט נדרש"); return; }
     const template = form.template ? PROJECT_TEMPLATES[form.template as keyof typeof PROJECT_TEMPLATES] : null;
     try {
       await createProject.mutateAsync({
-        client_id: clientId,
-        name: form.name,
-        description: form.description || undefined,
-        start_year: parseInt(form.start_year),
-        start_month: parseInt(form.start_month),
-        stages: template?.stages,
+        client_id: clientId, name: form.name, description: form.description || undefined,
+        start_year: parseInt(form.start_year), start_month: parseInt(form.start_month), stages: template?.stages,
       });
       toast.success("הפרויקט נוצר");
       setDialogOpen(false);
@@ -60,13 +56,9 @@ export default function ProjectsPage() {
     if (existingCheckpoint) { toast.error("כבר קיים צ׳קפוינט לחודש הנוכחי"); return; }
     try {
       await createCheckpoint.mutateAsync({
-        project_id: selectedProjectId,
-        year: now.getFullYear(),
-        month: now.getMonth() + 1,
-        status: cpForm.status,
-        what_was_done: cpForm.what_was_done || undefined,
-        blockers: cpForm.blockers || undefined,
-        next_month_focus: cpForm.next_month_focus || undefined,
+        project_id: selectedProjectId, year: now.getFullYear(), month: now.getMonth() + 1,
+        status: cpForm.status, what_was_done: cpForm.what_was_done || undefined,
+        blockers: cpForm.blockers || undefined, next_month_focus: cpForm.next_month_focus || undefined,
       });
       toast.success("צ׳קפוינט נוסף");
       setCheckpointDialog(false);

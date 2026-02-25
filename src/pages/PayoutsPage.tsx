@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useClients } from "@/hooks/useClients";
+import { useSelectedClient } from "@/hooks/useSelectedClient";
 import { usePayouts, useUpsertPayout } from "@/hooks/usePayouts";
 import { useMonthlyServicesByYear } from "@/hooks/useServices";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ const monthNames = ["ינואר", "פברואר", "מרץ", "אפריל", "מא�
 
 export default function PayoutsPage() {
   const { data: clients } = useClients();
-  const [clientId, setClientId] = useState("");
+  const { clientId, setClientId } = useSelectedClient();
   const [year, setYear] = useState(new Date().getFullYear().toString());
   const { data: payouts } = usePayouts(clientId, parseInt(year));
   const { data: services } = useMonthlyServicesByYear(clientId, parseInt(year));
@@ -21,13 +22,11 @@ export default function PayoutsPage() {
   const [editingMonth, setEditingMonth] = useState<number | null>(null);
   const [editAmount, setEditAmount] = useState("");
 
-  const getPayoutAmount = (month: number) => {
-    return payouts?.filter((p) => p.month === month).reduce((sum, p) => sum + Number(p.amount), 0) || 0;
-  };
+  const getPayoutAmount = (month: number) =>
+    payouts?.filter((p) => p.month === month).reduce((sum, p) => sum + Number(p.amount), 0) || 0;
 
-  const getServiceFees = (month: number) => {
-    return services?.filter((s) => s.month === month).reduce((sum, s) => sum + Number(s.monthly_fee), 0) || 0;
-  };
+  const getServiceFees = (month: number) =>
+    services?.filter((s) => s.month === month).reduce((sum, s) => sum + Number(s.monthly_fee), 0) || 0;
 
   const handleSave = async (month: number) => {
     try {
@@ -39,13 +38,11 @@ export default function PayoutsPage() {
 
   const totalPayouts = Array.from({ length: 12 }, (_, i) => getPayoutAmount(i + 1)).reduce((a, b) => a + b, 0);
   const totalFees = Array.from({ length: 12 }, (_, i) => getServiceFees(i + 1)).reduce((a, b) => a + b, 0);
-
   const years = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - 2 + i).toString());
 
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">סיכום תשלומים</h1>
-
       <div className="flex gap-3 mb-4">
         <Select value={clientId} onValueChange={setClientId}>
           <SelectTrigger className="w-48"><SelectValue placeholder="בחר לקוח" /></SelectTrigger>
@@ -92,9 +89,7 @@ export default function PayoutsPage() {
                     {payout > 0 || fees > 0 ? `₪${delta.toLocaleString()}` : "—"}
                   </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="sm" onClick={() => { setEditingMonth(month); setEditAmount(payout.toString()); }}>
-                      ערוך
-                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => { setEditingMonth(month); setEditAmount(payout.toString()); }}>ערוך</Button>
                   </TableCell>
                 </TableRow>
               );
