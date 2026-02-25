@@ -2,9 +2,11 @@ import { useState } from "react";
 import { useClients, useCreateClient, useUpdateClient, useDeleteClient } from "@/hooks/useClients";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -14,9 +16,11 @@ interface ClientForm {
   email: string;
   phone: string;
   notes: string;
+  plan_type: string;
 }
 
-const empty: ClientForm = { name: "", contact_name: "", email: "", phone: "", notes: "" };
+const empty: ClientForm = { name: "", contact_name: "", email: "", phone: "", notes: "", plan_type: "regular_pricing" };
+const planLabels: Record<string, string> = { regular_pricing: "תמחור רגיל", commission_plan: "תוכנית אחוזים" };
 
 export default function ClientsPage() {
   const { data: clients, isLoading } = useClients();
@@ -30,7 +34,11 @@ export default function ClientsPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const openNew = () => { setEditId(null); setForm(empty); setDialogOpen(true); };
-  const openEdit = (c: any) => { setEditId(c.id); setForm({ name: c.name, contact_name: c.contact_name || "", email: c.email || "", phone: c.phone || "", notes: c.notes || "" }); setDialogOpen(true); };
+  const openEdit = (c: any) => {
+    setEditId(c.id);
+    setForm({ name: c.name, contact_name: c.contact_name || "", email: c.email || "", phone: c.phone || "", notes: c.notes || "", plan_type: c.plan_type || "regular_pricing" });
+    setDialogOpen(true);
+  };
 
   const handleSave = async () => {
     if (!form.name.trim()) { toast.error("שם לקוח נדרש"); return; }
@@ -48,10 +56,7 @@ export default function ClientsPage() {
 
   const handleDelete = async () => {
     if (!deleteId) return;
-    try {
-      await del.mutateAsync(deleteId);
-      toast.success("הלקוח נמחק");
-    } catch { toast.error("שגיאה במחיקה"); }
+    try { await del.mutateAsync(deleteId); toast.success("הלקוח נמחק"); } catch { toast.error("שגיאה במחיקה"); }
     setDeleteId(null);
   };
 
@@ -67,6 +72,7 @@ export default function ClientsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>שם</TableHead>
+              <TableHead>סוג תמחור</TableHead>
               <TableHead>איש קשר</TableHead>
               <TableHead>אימייל</TableHead>
               <TableHead>טלפון</TableHead>
@@ -74,9 +80,14 @@ export default function ClientsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {clients?.map((c) => (
+            {clients?.map((c: any) => (
               <TableRow key={c.id}>
                 <TableCell className="font-medium">{c.name}</TableCell>
+                <TableCell>
+                  <Badge variant={c.plan_type === "commission_plan" ? "default" : "outline"}>
+                    {planLabels[c.plan_type] || c.plan_type}
+                  </Badge>
+                </TableCell>
                 <TableCell>{c.contact_name}</TableCell>
                 <TableCell>{c.email}</TableCell>
                 <TableCell>{c.phone}</TableCell>
@@ -88,7 +99,7 @@ export default function ClientsPage() {
                 </TableCell>
               </TableRow>
             ))}
-            {clients?.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">אין לקוחות עדיין</TableCell></TableRow>}
+            {clients?.length === 0 && <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">אין לקוחות עדיין</TableCell></TableRow>}
           </TableBody>
         </Table>
       )}
@@ -98,6 +109,13 @@ export default function ClientsPage() {
           <DialogHeader><DialogTitle>{editId ? "עריכת לקוח" : "לקוח חדש"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <Input placeholder="שם לקוח *" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <Select value={form.plan_type} onValueChange={(v) => setForm({ ...form, plan_type: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="regular_pricing">תמחור רגיל</SelectItem>
+                <SelectItem value="commission_plan">תוכנית אחוזים</SelectItem>
+              </SelectContent>
+            </Select>
             <Input placeholder="איש קשר" value={form.contact_name} onChange={(e) => setForm({ ...form, contact_name: e.target.value })} />
             <Input placeholder="אימייל" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
             <Input placeholder="טלפון" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />

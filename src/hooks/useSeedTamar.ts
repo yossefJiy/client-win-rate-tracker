@@ -2,21 +2,21 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 const SERVICE_CATALOG_ITEMS = [
-  { name: "Meta Ads Management", default_monthly_fee: 2900, currency: "ILS", billing: "monthly" },
-  { name: "Google Ads Management", default_monthly_fee: 2900, currency: "ILS", billing: "monthly" },
-  { name: "Strategy Meeting", default_monthly_fee: 700, currency: "ILS", billing: "per_session" },
-  { name: "One-off Site Management", default_monthly_fee: 290, currency: "ILS", billing: "hourly" },
-  { name: "TikTok Ads Management", default_monthly_fee: 2900, currency: "ILS", billing: "monthly" },
-  { name: "TikTok Social Management", default_monthly_fee: 2000, currency: "ILS", billing: "monthly" },
-  { name: "Operational Systems Spec/Design", default_monthly_fee: 400, currency: "ILS", billing: "hourly" },
-  { name: "CRO Site Management (10h/mo)", default_monthly_fee: 290, currency: "ILS", billing: "hourly" },
-  { name: "Bi-weekly Strategy Meeting", default_monthly_fee: 700, currency: "ILS", billing: "per_session" },
-  { name: "Email Marketing (bi-monthly)", default_monthly_fee: 1770, currency: "ILS", billing: "monthly" },
+  { name: "Meta Ads Management", regular_unit_price: 3500, plan_unit_price: 2900, currency: "ILS", billing: "monthly" },
+  { name: "Google Ads Management", regular_unit_price: 3500, plan_unit_price: 2900, currency: "ILS", billing: "monthly" },
+  { name: "Strategy Meeting", regular_unit_price: 900, plan_unit_price: 700, currency: "ILS", billing: "per_session" },
+  { name: "One-off Site Management", regular_unit_price: 350, plan_unit_price: 290, currency: "ILS", billing: "hourly" },
+  { name: "TikTok Ads Management", regular_unit_price: 3500, plan_unit_price: 2900, currency: "ILS", billing: "monthly" },
+  { name: "TikTok Social Management", regular_unit_price: 2500, plan_unit_price: 2000, currency: "ILS", billing: "monthly" },
+  { name: "Operational Systems Spec/Design", regular_unit_price: 500, plan_unit_price: 400, currency: "ILS", billing: "hourly" },
+  { name: "CRO Site Management (10h/mo)", regular_unit_price: 350, plan_unit_price: 290, currency: "ILS", billing: "hourly" },
+  { name: "Bi-weekly Strategy Meeting", regular_unit_price: 900, plan_unit_price: 700, currency: "ILS", billing: "per_session" },
+  { name: "Email Marketing (bi-monthly)", regular_unit_price: 2200, plan_unit_price: 1770, currency: "ILS", billing: "monthly" },
 ];
 
-const DEFAULT_TEMPLATES = [
-  { serviceName: "Meta Ads Management", platform: "meta", fee: 2900 },
-  { serviceName: "Google Ads Management", platform: "google", fee: 2900 },
+const DEFAULT_MONTHLY_SERVICES = [
+  { serviceName: "Meta Ads Management", platform: "meta" },
+  { serviceName: "Google Ads Management", platform: "google" },
 ];
 
 const COMMISSION_TIERS = [
@@ -31,48 +31,72 @@ export function useSeedTamar() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      // 1. Upsert client
+      // 1. Upsert client with plan_type
       const { data: existingClients } = await supabase.from("clients").select("id").eq("name", "תמר דרורי");
       let clientId: string;
       if (existingClients && existingClients.length > 0) {
         clientId = existingClients[0].id;
+        await supabase.from("clients").update({ plan_type: "commission_plan" } as any).eq("id", clientId);
       } else {
-        const { data, error } = await supabase.from("clients").insert({ name: "תמר דרורי" }).select().single();
+        const { data, error } = await supabase.from("clients").insert({ name: "תמר דרורי", plan_type: "commission_plan" } as any).select().single();
         if (error) throw error;
         clientId = data.id;
       }
 
-      // 2. Upsert service catalog items
+      // 2. Upsert service catalog items with dual pricing
       const catalogMap: Record<string, string> = {};
       for (const item of SERVICE_CATALOG_ITEMS) {
+        const insertData = {
+          name: item.name,
+          default_monthly_fee: item.plan_unit_price,
+          regular_unit_price: item.regular_unit_price,
+          plan_unit_price: item.plan_unit_price,
+          currency: item.currency,
+          billing: item.billing,
+        };
         const { data: existing } = await supabase.from("service_catalog").select("id").eq("name", item.name);
         if (existing && existing.length > 0) {
-          await supabase.from("service_catalog").update(item).eq("id", existing[0].id);
+          await supabase.from("service_catalog").update(insertData as any).eq("id", existing[0].id);
           catalogMap[item.name] = existing[0].id;
         } else {
-          const { data, error } = await supabase.from("service_catalog").insert(item as any).select().single();
+          const { data, error } = await supabase.from("service_catalog").insert(insertData as any).select().single();
           if (error) throw error;
           catalogMap[item.name] = data.id;
         }
       }
 
-      // 3. Create service templates
-      for (const tmpl of DEFAULT_TEMPLATES) {
+      // 3. Create default monthly service lines for current month (plan pricing)
+      const now = new Date();
+      const curYear = now.getFullYear();
+      const curMonth = now.getMonth() + 1;
+      for (const tmpl of DEFAULT_MONTHLY_SERVICES) {
         const catalogId = catalogMap[tmpl.serviceName];
-        const { data: existingTmpl } = await supabase
-          .from("client_service_templates" as any)
+        const catalogItem = SERVICE_CATALOG_ITEMS.find(s => s.name === tmpl.serviceName);
+        const planPrice = catalogItem?.plan_unit_price ?? 0;
+        
+        // Check if already exists
+        const { data: existing } = await supabase
+          .from("client_monthly_services")
           .select("id")
           .eq("client_id", clientId)
-          .eq("service_catalog_id", catalogId);
-        if (!existingTmpl || existingTmpl.length === 0) {
-          await supabase.from("client_service_templates" as any).insert({
+          .eq("year", curYear)
+          .eq("month", curMonth)
+          .eq("service_id", catalogId);
+        
+        if (!existing || existing.length === 0) {
+          await supabase.from("client_monthly_services").insert({
             client_id: clientId,
-            service_catalog_id: catalogId,
+            year: curYear,
+            month: curMonth,
+            service_id: catalogId,
+            service_name: tmpl.serviceName,
             platform: tmpl.platform,
-            default_fee: tmpl.fee,
-            default_status: "planned",
-            is_active: true,
-          });
+            monthly_fee: planPrice,
+            unit_price: planPrice,
+            quantity: 1,
+            pricing_basis: "plan",
+            status: "planned",
+          } as any);
         }
       }
 
@@ -82,32 +106,23 @@ export function useSeedTamar() {
         .select("id")
         .eq("client_id", clientId)
         .eq("name", "TD Tiered Commission");
-      
+
       let planId: string;
       if (existingPlans && (existingPlans as any[]).length > 0) {
         planId = (existingPlans as any[])[0].id;
         await supabase.from("commission_plans" as any).update({
-          minimum_fee: 4350,
-          currency: "ILS",
-          base: "net_sales",
-          is_active: true,
+          minimum_fee: 4350, currency: "ILS", base: "net_sales", is_active: true,
         }).eq("id", planId);
-        // Delete existing tiers and re-create
         await supabase.from("commission_tiers" as any).delete().eq("plan_id", planId);
       } else {
         const { data, error } = await supabase.from("commission_plans" as any).insert({
-          client_id: clientId,
-          name: "TD Tiered Commission",
-          minimum_fee: 4350,
-          currency: "ILS",
-          base: "net_sales",
-          is_active: true,
+          client_id: clientId, name: "TD Tiered Commission",
+          minimum_fee: 4350, currency: "ILS", base: "net_sales", is_active: true,
         }).select().single();
         if (error) throw error;
         planId = (data as any).id;
       }
 
-      // Insert tiers
       const tiersWithPlanId = COMMISSION_TIERS.map(t => ({ ...t, plan_id: planId }));
       const { error: tierError } = await supabase.from("commission_tiers" as any).insert(tiersWithPlanId);
       if (tierError) throw tierError;
@@ -118,6 +133,7 @@ export function useSeedTamar() {
       qc.invalidateQueries({ queryKey: ["clients"] });
       qc.invalidateQueries({ queryKey: ["service_catalog"] });
       qc.invalidateQueries({ queryKey: ["commission_plans"] });
+      qc.invalidateQueries({ queryKey: ["monthly_services"] });
     },
   });
 }

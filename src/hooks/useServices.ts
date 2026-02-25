@@ -12,6 +12,18 @@ export function useServiceCatalog() {
   });
 }
 
+export function useUpdateServiceCatalog() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...updates }: { id: string; [key: string]: any }) => {
+      const { data, error } = await supabase.from("service_catalog").update(updates).eq("id", id).select().single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["service_catalog"] }),
+  });
+}
+
 export function useMonthlyServices(clientId?: string, year?: number, month?: number) {
   return useQuery({
     queryKey: ["monthly_services", clientId, year, month],
@@ -37,7 +49,7 @@ export function useMonthlyServicesByYear(clientId?: string, year?: number) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("client_monthly_services")
-        .select("*")
+        .select("*, service_catalog(*)")
         .eq("client_id", clientId!)
         .eq("year", year!)
         .order("month");
@@ -45,6 +57,19 @@ export function useMonthlyServicesByYear(clientId?: string, year?: number) {
       return data;
     },
   });
+}
+
+/** Determine the correct unit_price based on client plan_type */
+export function resolvePrice(
+  planType: string,
+  service: { regular_unit_price?: number | null; plan_unit_price?: number | null; default_monthly_fee?: number | null }
+): { unitPrice: number; pricingBasis: "plan" | "regular" } {
+  if (planType === "commission_plan") {
+    const price = service.plan_unit_price ?? service.regular_unit_price ?? service.default_monthly_fee ?? 0;
+    return { unitPrice: price, pricingBasis: "plan" };
+  }
+  const price = service.regular_unit_price ?? service.default_monthly_fee ?? 0;
+  return { unitPrice: price, pricingBasis: "regular" };
 }
 
 export function useCreateMonthlyService() {
@@ -58,11 +83,22 @@ export function useCreateMonthlyService() {
       service_name?: string;
       platform?: string;
       monthly_fee: number;
+      unit_price?: number;
+      quantity?: number;
+      pricing_basis?: string;
+      linked_project_id?: string;
       status?: string;
       delivery_notes?: string;
       agreement_id?: string;
     }) => {
-      const { data, error } = await supabase.from("client_monthly_services").insert(service).select().single();
+      // Ensure unit_price and quantity are set
+      const insert = {
+        ...service,
+        unit_price: service.unit_price ?? service.monthly_fee,
+        quantity: service.quantity ?? 1,
+        pricing_basis: service.pricing_basis ?? "regular",
+      };
+      const { data, error } = await supabase.from("client_monthly_services").insert(insert).select().single();
       if (error) throw error;
       return data;
     },
