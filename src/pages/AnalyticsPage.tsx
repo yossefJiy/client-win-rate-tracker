@@ -124,12 +124,13 @@ export default function AnalyticsPage() {
     } catch { toast.error("שגיאה בשמירת הגדרות"); }
   };
 
-  const handleSync = async (months: "current" | "last24" | "last36") => {
+  const handleSync = async () => {
     if (!clientId) { toast.error("בחר לקוח"); return; }
     try {
-      await sync.mutateAsync({ clientId, months });
-      const msg = months === "current" ? "חודש נוכחי סונכרן" : months === "last24" ? "24 חודשים סונכרנו" : "36 חודשים סונכרנו";
-      toast.success(msg);
+      const result = await sync.mutateAsync({ clientId, action: "sync_all" });
+      const msg = result?.message || "סנכרון הושלם";
+      if (result?.errors?.length) toast.info(msg);
+      else toast.success(msg);
     } catch { toast.error("שגיאה בסנכרון"); }
   };
 
@@ -172,14 +173,8 @@ export default function AnalyticsPage() {
               }} disabled={icountSync.isPending}>
                 <FileText className={`h-4 w-4 ml-1 ${icountSync.isPending ? "animate-spin" : ""}`} />סנכרון iCount
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handleSync("current")} disabled={sync.isPending}>
-                <RefreshCw className={`h-4 w-4 ml-1 ${sync.isPending ? "animate-spin" : ""}`} />חודש נוכחי
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handleSync("last24")} disabled={sync.isPending}>
-                <RefreshCw className={`h-4 w-4 ml-1 ${sync.isPending ? "animate-spin" : ""}`} />24 חודשים
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handleSync("last36")} disabled={sync.isPending}>
-                <RefreshCw className={`h-4 w-4 ml-1 ${sync.isPending ? "animate-spin" : ""}`} />36 חודשים
+              <Button variant="outline" size="sm" onClick={() => handleSync()} disabled={sync.isPending}>
+                <RefreshCw className={`h-4 w-4 ml-1 ${sync.isPending ? "animate-spin" : ""}`} />סנכרון Converto
               </Button>
             </>
           )}
