@@ -1,7 +1,8 @@
-import { useState } from "react";
 import { useClients } from "@/hooks/useClients";
+import { useSelectedClient } from "@/hooks/useSelectedClient";
 import { useCommissionPlans, useCreateCommissionPlan, useUpdateCommissionPlan, useCreateCommissionTier, useUpdateCommissionTier, useDeleteCommissionTier } from "@/hooks/useCommissionPlans";
 import { useSeedTamar } from "@/hooks/useSeedTamar";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -15,7 +16,7 @@ import { toast } from "sonner";
 
 export default function CommissionPlansPage() {
   const { data: clients } = useClients();
-  const [clientId, setClientId] = useState("");
+  const { clientId, setClientId } = useSelectedClient();
   const { data: plans, isLoading } = useCommissionPlans(clientId);
   const createPlan = useCreateCommissionPlan();
   const updatePlan = useUpdateCommissionPlan();
@@ -205,7 +206,6 @@ export default function CommissionPlansPage() {
         </div>
       ))}
 
-      {/* New plan dialog */}
       <Dialog open={planDialogOpen} onOpenChange={setPlanDialogOpen}>
         <DialogContent dir="rtl">
           <DialogHeader><DialogTitle>תוכנית עמלה חדשה</DialogTitle></DialogHeader>
@@ -224,7 +224,6 @@ export default function CommissionPlansPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Tier dialog */}
       <Dialog open={tierDialogOpen} onOpenChange={setTierDialogOpen}>
         <DialogContent dir="rtl">
           <DialogHeader><DialogTitle>{editTierId ? "עריכת דרגה" : "דרגה חדשה"}</DialogTitle></DialogHeader>

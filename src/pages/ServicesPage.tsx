@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { useClients } from "@/hooks/useClients";
+import { useSelectedClient } from "@/hooks/useSelectedClient";
 import { useServiceCatalog, useMonthlyServices, useCreateMonthlyService, useUpdateMonthlyService, useDeleteMonthlyService } from "@/hooks/useServices";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Zap } from "lucide-react";
+import { Trash2, Zap } from "lucide-react";
 import { toast } from "sonner";
 
 const monthNames = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
@@ -15,8 +14,8 @@ const platformLabels: Record<string, string> = { meta: "Meta", google: "Google",
 
 export default function ServicesPage() {
   const { data: clients } = useClients();
+  const { clientId, setClientId } = useSelectedClient();
   const { data: catalog } = useServiceCatalog();
-  const [clientId, setClientId] = useState("");
   const [year, setYear] = useState(new Date().getFullYear().toString());
   const [month, setMonth] = useState((new Date().getMonth() + 1).toString());
   const { data: services, isLoading } = useMonthlyServices(clientId, parseInt(year), parseInt(month));
@@ -30,14 +29,8 @@ export default function ServicesPage() {
     if (!clientId) { toast.error("בחר לקוח קודם"); return; }
     try {
       await create.mutateAsync({
-        client_id: clientId,
-        year: parseInt(year),
-        month: parseInt(month),
-        service_id: serviceId,
-        service_name: serviceName,
-        platform,
-        monthly_fee: fee,
-        status: "planned",
+        client_id: clientId, year: parseInt(year), month: parseInt(month),
+        service_id: serviceId, service_name: serviceName, platform, monthly_fee: fee, status: "planned",
       });
       toast.success(`${serviceName} נוסף`);
     } catch { toast.error("שגיאה או שכבר קיים"); }
@@ -48,15 +41,12 @@ export default function ServicesPage() {
   const tiktokCatalog = catalog?.find((c) => c.name.includes("TikTok"));
 
   const handleStatusChange = async (id: string, status: string) => {
-    try {
-      await updateSvc.mutateAsync({ id, status });
-    } catch { toast.error("שגיאה"); }
+    try { await updateSvc.mutateAsync({ id, status }); } catch { toast.error("שגיאה"); }
   };
 
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">שירותים חודשיים</h1>
-
       <div className="flex gap-3 mb-4 flex-wrap">
         <Select value={clientId} onValueChange={setClientId}>
           <SelectTrigger className="w-48"><SelectValue placeholder="בחר לקוח" /></SelectTrigger>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useClients } from "@/hooks/useClients";
+import { useSelectedClient } from "@/hooks/useSelectedClient";
 import { useAnalyticsSnapshotsByYears, useClientIntegration, useSyncPoconverto, useUpsertClientIntegration, useIntegrationSettings, useUpsertIntegrationSetting } from "@/hooks/useAnalytics";
 import { useCommissionPlans, calculateCommission } from "@/hooks/useCommissionPlans";
 import { useMonthlyServicesByYear } from "@/hooks/useServices";
@@ -28,7 +29,7 @@ function pct(n: number | null | undefined): string {
 
 export default function AnalyticsPage() {
   const { data: clients } = useClients();
-  const [clientId, setClientId] = useState("");
+  const { clientId, setClientId } = useSelectedClient();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear.toString());
   const yearNum = parseInt(year);
@@ -73,7 +74,6 @@ export default function AnalyticsPage() {
     return ((current - prev) / prev) * 100;
   };
 
-  // Current month
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentSnap = getSnapshot(currentMonth);
@@ -159,9 +159,7 @@ export default function AnalyticsPage() {
                 <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">מכירות נטו</CardTitle></CardHeader>
                 <CardContent>
                   <p className="text-2xl font-bold">{currentSnap ? fmt(currentSnap.net_sales) : "—"}</p>
-                  {lastYearSnap && currentSnap && (
-                    <YoYBadge value={yoyPct(currentSnap.net_sales, lastYearSnap.net_sales)} />
-                  )}
+                  {lastYearSnap && currentSnap && <YoYBadge value={yoyPct(currentSnap.net_sales, lastYearSnap.net_sales)} />}
                 </CardContent>
               </Card>
               <Card>
@@ -179,9 +177,7 @@ export default function AnalyticsPage() {
               </Card>
               <Card>
                 <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">MER</CardTitle></CardHeader>
-                <CardContent>
-                  <p className="text-2xl font-bold">{currentMER ? currentMER.toFixed(2) : "—"}</p>
-                </CardContent>
+                <CardContent><p className="text-2xl font-bold">{currentMER ? currentMER.toFixed(2) : "—"}</p></CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">עמלה לתשלום</CardTitle></CardHeader>
@@ -246,30 +242,17 @@ export default function AnalyticsPage() {
                   const fees = getServiceFees(month);
                   const mer = snap && Number(snap.ad_spend_total) > 0
                     ? (Number(snap.net_sales) / Number(snap.ad_spend_total)).toFixed(2) : "—";
-
                   return (
                     <TableRow key={month} className={month === currentMonth && yearNum === currentYear ? "bg-muted/30" : ""}>
                       <TableCell className="font-medium">{name}</TableCell>
                       <TableCell>{snap ? fmt(snap.net_sales) : "—"}</TableCell>
-                      <TableCell>
-                        <YoYBadge value={yoyPct(snap?.net_sales, prevSnap?.net_sales)} />
-                      </TableCell>
+                      <TableCell><YoYBadge value={yoyPct(snap?.net_sales, prevSnap?.net_sales)} /></TableCell>
                       <TableCell>{snap ? fmt(snap.ad_spend_total) : "—"}</TableCell>
-                      <TableCell>
-                        <YoYBadge value={yoyPct(snap?.ad_spend_total, prevSnap?.ad_spend_total)} />
-                      </TableCell>
+                      <TableCell><YoYBadge value={yoyPct(snap?.ad_spend_total, prevSnap?.ad_spend_total)} /></TableCell>
                       <TableCell>{mer}</TableCell>
-                      <TableCell>
-                        {comm ? (
-                          <span title={comm.isMinimum ? "מינימום" : `${comm.tierUsed?.rate_percent}%`}>
-                            {fmt(comm.finalDue)}
-                          </span>
-                        ) : "—"}
-                      </TableCell>
+                      <TableCell>{comm ? <span title={comm.isMinimum ? "מינימום" : `${comm.tierUsed?.rate_percent}%`}>{fmt(comm.finalDue)}</span> : "—"}</TableCell>
                       <TableCell>{fees > 0 ? fmt(fees) : "—"}</TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="sm" onClick={() => setDrillMonth(month)}>פרט</Button>
-                      </TableCell>
+                      <TableCell><Button variant="ghost" size="sm" onClick={() => setDrillMonth(month)}>פרט</Button></TableCell>
                     </TableRow>
                   );
                 })}
@@ -282,12 +265,8 @@ export default function AnalyticsPage() {
                   <TableCell className="font-bold">{fmt(thisYearSnapshots.reduce((s: number, x: any) => s + Number(x.ad_spend_total || 0), 0))}</TableCell>
                   <TableCell />
                   <TableCell />
-                  <TableCell className="font-bold">
-                    {fmt(monthNames.reduce((s, _, i) => s + (getCommission(i + 1)?.finalDue || 0), 0))}
-                  </TableCell>
-                  <TableCell className="font-bold">
-                    {fmt(Array.from({ length: 12 }, (_, i) => getServiceFees(i + 1)).reduce((a, b) => a + b, 0))}
-                  </TableCell>
+                  <TableCell className="font-bold">{fmt(monthNames.reduce((s, _, i) => s + (getCommission(i + 1)?.finalDue || 0), 0))}</TableCell>
+                  <TableCell className="font-bold">{fmt(Array.from({ length: 12 }, (_, i) => getServiceFees(i + 1)).reduce((a, b) => a + b, 0))}</TableCell>
                   <TableCell />
                 </TableRow>
               </TableFooter>
@@ -296,22 +275,13 @@ export default function AnalyticsPage() {
         </Tabs>
       )}
 
-      {/* Drilldown dialog */}
       <Dialog open={drillMonth !== null} onOpenChange={() => setDrillMonth(null)}>
         <DialogContent dir="rtl" className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{drillMonth ? `${monthNames[drillMonth - 1]} ${year}` : ""} — פירוט</DialogTitle>
-          </DialogHeader>
-          {drillMonth && <MonthDrilldown
-            snapshot={getSnapshot(drillMonth)}
-            commission={getCommission(drillMonth)}
-            services={services?.filter((s: any) => s.month === drillMonth) || []}
-            activePlan={activePlan}
-          />}
+          <DialogHeader><DialogTitle>{drillMonth ? `${monthNames[drillMonth - 1]} ${year}` : ""} — פירוט</DialogTitle></DialogHeader>
+          {drillMonth && <MonthDrilldown snapshot={getSnapshot(drillMonth)} commission={getCommission(drillMonth)} services={services?.filter((s: any) => s.month === drillMonth) || []} activePlan={activePlan} />}
         </DialogContent>
       </Dialog>
 
-      {/* Settings dialog */}
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent dir="rtl">
           <DialogHeader><DialogTitle>הגדרות Poconverto</DialogTitle></DialogHeader>
@@ -358,15 +328,12 @@ function MonthDrilldown({ snapshot, commission, services, activePlan }: {
           </div>
         </div>
       )}
-
       {commission && activePlan && (
         <div>
           <h4 className="font-medium mb-2">חישוב עמלה</h4>
           <div className="space-y-1 text-sm">
             <div className="flex justify-between"><span>מכירות נטו</span><span>{fmt(snapshot?.net_sales)}</span></div>
-            {commission.tierUsed && (
-              <div className="flex justify-between"><span>דרגה: ≥{fmt(commission.tierUsed.threshold_sales)}</span><span>{commission.tierUsed.rate_percent}%</span></div>
-            )}
+            {commission.tierUsed && <div className="flex justify-between"><span>דרגה: ≥{fmt(commission.tierUsed.threshold_sales)}</span><span>{commission.tierUsed.rate_percent}%</span></div>}
             <div className="flex justify-between"><span>עמלה מחושבת</span><span>{fmt(commission.commission)}</span></div>
             <div className="flex justify-between"><span>מינימום</span><span>{fmt(activePlan.minimum_fee)}</span></div>
             <div className="flex justify-between font-medium border-t pt-1">
@@ -376,7 +343,6 @@ function MonthDrilldown({ snapshot, commission, services, activePlan }: {
           </div>
         </div>
       )}
-
       {services.length > 0 && (
         <div>
           <h4 className="font-medium mb-2">שירותים חודשיים</h4>
@@ -394,10 +360,7 @@ function MonthDrilldown({ snapshot, commission, services, activePlan }: {
           </div>
         </div>
       )}
-
-      {!snapshot && !commission && services.length === 0 && (
-        <p className="text-muted-foreground text-center">אין נתונים לחודש זה</p>
-      )}
+      {!snapshot && !commission && services.length === 0 && <p className="text-muted-foreground text-center">אין נתונים לחודש זה</p>}
     </div>
   );
 }
