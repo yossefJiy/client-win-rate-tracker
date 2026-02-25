@@ -3,8 +3,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+const CONVERTO_BRIDGE_URL = "https://ovkuabbfubtiwnlksmxd.supabase.co/functions/v1/data-api";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -14,9 +16,17 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const convertoApiKey = Deno.env.get("CONVERTO_API_KEY");
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { client_id, months } = await req.json();
+    if (!convertoApiKey) {
+      return new Response(JSON.stringify({ error: "CONVERTO_API_KEY not configured" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { client_id, months, type } = await req.json();
 
     if (!client_id) {
       return new Response(JSON.stringify({ error: "client_id required" }), {
@@ -25,139 +35,116 @@ serve(async (req) => {
       });
     }
 
-    // Get integration settings
-    const { data: settings } = await supabase
-      .from("integration_settings")
-      .select("key, value");
+    // Determine what to fetch from Converto bridge
+    const bridgeType = type || "campaigns";
+    const url = `${CONVERTO_BRIDGE_URL}?bridge=true&type=${bridgeType}`;
+    
+    console.log(`[poconverto-sync] Fetching ${bridgeType} from Converto bridge...`);
 
-    const settingsMap: Record<string, string> = {};
-    settings?.forEach((s: any) => { settingsMap[s.key] = s.value; });
-
-    const baseUrl = settingsMap.poconverto_base_url;
-    const apiKey = settingsMap.poconverto_api_key;
-
-    if (!baseUrl || !apiKey) {
-      return new Response(JSON.stringify({ error: "Poconverto settings not configured" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Get client integration
-    const { data: clientIntegration } = await supabase
-      .from("client_integrations")
-      .select("*")
-      .eq("client_id", client_id)
-      .single();
-
-    if (!clientIntegration?.poconverto_client_key) {
-      return new Response(JSON.stringify({ error: "Client Poconverto key not configured" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Calculate date range
-    const now = new Date();
-    let fromDate: string;
-    let toDate: string;
-
-    if (months === "current") {
-      fromDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      toDate = fromDate;
-    } else {
-      const monthsBack = months === "last36" ? 35 : 23;
-      const from = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
-      fromDate = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, "0")}`;
-      toDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    }
-
-    // Call Poconverto API
-    const url = `${baseUrl}/api/analytics/monthly?client_key=${clientIntegration.poconverto_client_key}&from=${fromDate}&to=${toDate}`;
     const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      method: "GET",
+      headers: {
+        "X-API-Key": convertoApiKey,
+        "Content-Type": "application/json",
+      },
     });
 
     if (!response.ok) {
       const errText = await response.text();
-      return new Response(JSON.stringify({ error: `Poconverto API error [${response.status}]: ${errText}` }), {
+      console.error(`[poconverto-sync] Bridge error [${response.status}]:`, errText);
+      return new Response(JSON.stringify({ error: `Converto bridge error [${response.status}]: ${errText}` }), {
         status: 502,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const analyticsData = await response.json();
-    const monthlyData = analyticsData.data || analyticsData.months || analyticsData;
+    const result = await response.json();
+    console.log(`[poconverto-sync] Got ${result.count || 0} ${bridgeType} records from Converto`);
 
-    if (!Array.isArray(monthlyData)) {
-      return new Response(JSON.stringify({ error: "Unexpected API response format", raw: analyticsData }), {
-        status: 502,
+    // If fetching analytics_snapshots (when added to bridge), map to our monthly_analytics_snapshots
+    if (bridgeType === "analytics_snapshots" && Array.isArray(result.data)) {
+      let upsertedCount = 0;
+
+      for (const item of result.data) {
+        const metrics = item.metrics || {};
+        const data = item.data || {};
+        const snapshotDate = new Date(item.snapshot_date || item.updated_at || new Date());
+        const year = snapshotDate.getFullYear();
+        const month = snapshotDate.getMonth() + 1;
+
+        const row: Record<string, any> = {
+          client_id,
+          year,
+          month,
+          last_synced_at: new Date().toISOString(),
+        };
+
+        // Map based on platform
+        switch (item.platform) {
+          case "shopify":
+            row.gross_sales = data.summary?.grossSales || metrics.totalRevenue || 0;
+            row.net_sales = data.summary?.netSales || data.summary?.totalRevenue || 0;
+            row.orders = data.summary?.totalOrders || metrics.totalOrders || 0;
+            row.sessions = data.summary?.sessions || 0;
+            row.avg_order_value = metrics.avgOrderValue || 0;
+            row.conversion_rate = data.summary?.conversionRate || metrics.conversionRate || 0;
+            row.new_customers = data.summary?.uniqueCustomers || 0;
+            row.discounts = data.summary?.discounts || 0;
+            row.refunds = data.summary?.returns || 0;
+            break;
+          case "google_ads":
+            row.ad_spend_google = data.account?.totalCost || metrics.totalCost || 0;
+            row.google_impressions = data.account?.totalImpressions || metrics.totalImpressions || 0;
+            row.google_clicks = data.account?.totalClicks || metrics.totalClicks || 0;
+            row.google_roas = data.account?.totalConversionValue && data.account?.totalCost 
+              ? data.account.totalConversionValue / data.account.totalCost : 0;
+            row.google_cpc = row.google_clicks > 0 ? row.ad_spend_google / row.google_clicks : 0;
+            row.google_cpm = row.google_impressions > 0 ? (row.ad_spend_google / row.google_impressions) * 1000 : 0;
+            break;
+          case "facebook_ads":
+            row.ad_spend_meta = data.totals?.cost || metrics.totalCost || 0;
+            row.meta_impressions = data.totals?.impressions || metrics.totalImpressions || 0;
+            row.meta_clicks = data.totals?.clicks || metrics.totalClicks || 0;
+            row.meta_roas = data.totals?.conversionValue && data.totals?.cost
+              ? data.totals.conversionValue / data.totals.cost : 0;
+            row.meta_cpc = row.meta_clicks > 0 ? row.ad_spend_meta / row.meta_clicks : 0;
+            row.meta_cpm = row.meta_impressions > 0 ? (row.ad_spend_meta / row.meta_impressions) * 1000 : 0;
+            break;
+          case "google_analytics":
+            row.page_views = metrics.pageviews || 0;
+            row.bounce_rate = metrics.bounceRate || 0;
+            row.sessions = metrics.sessions || 0;
+            break;
+        }
+
+        // Calculate totals
+        row.ad_spend_total = (row.ad_spend_meta || 0) + (row.ad_spend_google || 0) + (row.ad_spend_tiktok || 0);
+        row.total_ad_impressions = (row.meta_impressions || 0) + (row.google_impressions || 0) + (row.tiktok_impressions || 0);
+        row.total_ad_clicks = (row.meta_clicks || 0) + (row.google_clicks || 0) + (row.tiktok_clicks || 0);
+
+        const { error } = await supabase
+          .from("monthly_analytics_snapshots")
+          .upsert(row, { onConflict: "client_id,year,month" });
+
+        if (!error) upsertedCount++;
+        else console.error(`[poconverto-sync] Upsert error:`, error);
+      }
+
+      return new Response(JSON.stringify({ success: true, upserted: upsertedCount, source: "converto_bridge" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    let upsertedCount = 0;
-
-    for (const item of monthlyData) {
-      const year = item.year || parseInt(item.date?.split("-")[0]);
-      const month = item.month || parseInt(item.date?.split("-")[1]);
-
-      if (!year || !month) continue;
-
-      const row = {
-        client_id,
-        year,
-        month,
-        net_sales: item.net_sales ?? item.netSales ?? 0,
-        gross_sales: item.gross_sales ?? item.grossSales ?? 0,
-        discounts: item.discounts ?? 0,
-        refunds: item.refunds ?? 0,
-        orders: item.orders ?? 0,
-        sessions: item.sessions ?? 0,
-        ad_spend_meta: item.ad_spend_meta ?? item.adSpendMeta ?? item.meta_spend ?? 0,
-        ad_spend_google: item.ad_spend_google ?? item.adSpendGoogle ?? item.google_spend ?? 0,
-        ad_spend_tiktok: item.ad_spend_tiktok ?? item.adSpendTiktok ?? item.tiktok_spend ?? 0,
-        ad_spend_total: item.ad_spend_total ?? item.adSpendTotal ?? item.total_spend ?? 0,
-        // Shopify metrics
-        new_customers: item.new_customers ?? item.newCustomers ?? 0,
-        returning_customers: item.returning_customers ?? item.returningCustomers ?? 0,
-        avg_order_value: item.avg_order_value ?? item.avgOrderValue ?? item.aov ?? 0,
-        conversion_rate: item.conversion_rate ?? item.conversionRate ?? 0,
-        // GA metrics
-        page_views: item.page_views ?? item.pageViews ?? 0,
-        bounce_rate: item.bounce_rate ?? item.bounceRate ?? 0,
-        avg_session_duration: item.avg_session_duration ?? item.avgSessionDuration ?? 0,
-        // Per-channel ads detail
-        meta_impressions: item.meta_impressions ?? 0,
-        meta_clicks: item.meta_clicks ?? 0,
-        meta_cpc: item.meta_cpc ?? 0,
-        meta_cpm: item.meta_cpm ?? 0,
-        meta_roas: item.meta_roas ?? 0,
-        google_impressions: item.google_impressions ?? 0,
-        google_clicks: item.google_clicks ?? 0,
-        google_cpc: item.google_cpc ?? 0,
-        google_cpm: item.google_cpm ?? 0,
-        google_roas: item.google_roas ?? 0,
-        tiktok_impressions: item.tiktok_impressions ?? 0,
-        tiktok_clicks: item.tiktok_clicks ?? 0,
-        tiktok_cpc: item.tiktok_cpc ?? 0,
-        tiktok_cpm: item.tiktok_cpm ?? 0,
-        tiktok_roas: item.tiktok_roas ?? 0,
-        total_ad_impressions: item.total_ad_impressions ?? 0,
-        total_ad_clicks: item.total_ad_clicks ?? 0,
-        blended_roas: item.blended_roas ?? 0,
-        mer: item.mer ?? 0,
-        last_synced_at: new Date().toISOString(),
-      };
-
-      const { error } = await supabase
-        .from("monthly_analytics_snapshots")
-        .upsert(row, { onConflict: "client_id,year,month" });
-
-      if (!error) upsertedCount++;
-    }
-
-    return new Response(JSON.stringify({ success: true, upserted: upsertedCount }), {
+    // For other types (campaigns, clients, etc.), just return the data
+    return new Response(JSON.stringify({ 
+      success: true, 
+      data: result.data, 
+      count: result.count || 0,
+      type: bridgeType,
+      note: bridgeType !== "analytics_snapshots" 
+        ? "To sync analytics, add 'analytics_snapshots' to the bridge tableMap in Converto" 
+        : undefined
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
