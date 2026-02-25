@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { useClients } from "@/hooks/useClients";
+import { useClients, useClient } from "@/hooks/useClients";
 import { useSelectedClient } from "@/hooks/useSelectedClient";
 import { useProjects, useProject, useCreateProject, useCreateCheckpoint, PROJECT_TEMPLATES } from "@/hooks/useProjects";
+import { useServiceCatalog } from "@/hooks/useServices";
+import { useProjectRequiredServices, useCreateProjectRequiredService, useDeleteProjectRequiredService, useGenerateProjectServiceLines } from "@/hooks/useProjectServices";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,29 +12,39 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, ArrowRight, CalendarCheck } from "lucide-react";
+import { Plus, ArrowRight, CalendarCheck, Zap, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 const statusLabels: Record<string, string> = { planned: "מתוכנן", active: "פעיל", on_hold: "מושהה", completed: "הושלם", canceled: "בוטל" };
 const checkStatusLabels: Record<string, string> = { on_track: "בתוואי", at_risk: "בסיכון", off_track: "חורג" };
 const checkStatusColors: Record<string, string> = { on_track: "bg-green-500", at_risk: "bg-yellow-500", off_track: "bg-red-500" };
 const monthNames = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
+const whenLabels: Record<string, string> = { on_project_create: "ביצירת פרויקט", per_month: "כל חודש", on_stage: "בשלב" };
 
 export default function ProjectsPage() {
   const { data: clients } = useClients();
   const { clientId, setClientId } = useSelectedClient();
+  const { data: client } = useClient(clientId);
   const { data: projects } = useProjects(clientId);
+  const { data: catalog } = useServiceCatalog();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const { data: project } = useProject(selectedProjectId || undefined);
+  const { data: requiredServices } = useProjectRequiredServices(selectedProjectId || undefined);
   const createProject = useCreateProject();
   const createCheckpoint = useCreateCheckpoint();
+  const createReqService = useCreateProjectRequiredService();
+  const deleteReqService = useDeleteProjectRequiredService();
+  const generateLines = useGenerateProjectServiceLines();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ name: "", description: "", start_year: new Date().getFullYear().toString(), start_month: (new Date().getMonth() + 1).toString(), template: "" });
   const [checkpointDialog, setCheckpointDialog] = useState(false);
   const [cpForm, setCpForm] = useState({ status: "on_track", what_was_done: "", blockers: "", next_month_focus: "" });
+  const [addServiceDialog, setAddServiceDialog] = useState(false);
+  const [newServiceForm, setNewServiceForm] = useState({ service_id: "", default_quantity: "1", when_applied: "per_month" });
 
   const months = Array.from({ length: 12 }, (_, i) => i + 1);
+  const planType = (client as any)?.plan_type || "regular_pricing";
 
   const handleCreateProject = async () => {
     if (!form.name.trim()) { toast.error("שם פרויקט נדרש"); return; }
@@ -50,10 +62,10 @@ export default function ProjectsPage() {
   const handleAddCheckpoint = async () => {
     if (!selectedProjectId) return;
     const now = new Date();
-    const existingCheckpoint = project?.project_monthly_checkpoints?.find(
+    const existing = project?.project_monthly_checkpoints?.find(
       (c: any) => c.year === now.getFullYear() && c.month === now.getMonth() + 1
     );
-    if (existingCheckpoint) { toast.error("כבר קיים צ׳קפוינט לחודש הנוכחי"); return; }
+    if (existing) { toast.error("כבר קיים צ׳קפוינט לחודש הנוכחי"); return; }
     try {
       await createCheckpoint.mutateAsync({
         project_id: selectedProjectId, year: now.getFullYear(), month: now.getMonth() + 1,
@@ -64,6 +76,35 @@ export default function ProjectsPage() {
       setCheckpointDialog(false);
       setCpForm({ status: "on_track", what_was_done: "", blockers: "", next_month_focus: "" });
     } catch { toast.error("שגיאה"); }
+  };
+
+  const handleAddRequiredService = async () => {
+    if (!selectedProjectId || !newServiceForm.service_id) { toast.error("בחר שירות"); return; }
+    try {
+      await createReqService.mutateAsync({
+        project_id: selectedProjectId,
+        service_id: newServiceForm.service_id,
+        default_quantity: parseFloat(newServiceForm.default_quantity) || 1,
+        when_applied: newServiceForm.when_applied,
+      });
+      toast.success("שירות נדרש נוסף");
+      setAddServiceDialog(false);
+    } catch { toast.error("שגיאה"); }
+  };
+
+  const handleGenerateLines = async () => {
+    if (!selectedProjectId || !clientId) return;
+    const now = new Date();
+    try {
+      const created = await generateLines.mutateAsync({
+        projectId: selectedProjectId,
+        clientId,
+        year: now.getFullYear(),
+        month: now.getMonth() + 1,
+        planType,
+      });
+      toast.success(`${created} שורות שירות נוצרו לחודש הנוכחי`);
+    } catch { toast.error("שגיאה ביצירת שורות"); }
   };
 
   const sortedStages = project?.project_stages?.sort((a: any, b: any) => a.order_index - b.order_index) || [];
@@ -81,7 +122,8 @@ export default function ProjectsPage() {
         </div>
         {project.description && <p className="text-muted-foreground mb-6">{project.description}</p>}
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+          {/* Stages */}
           <Card>
             <CardHeader><CardTitle className="text-lg">תוכנית שלבים</CardTitle></CardHeader>
             <CardContent>
@@ -102,6 +144,40 @@ export default function ProjectsPage() {
             </CardContent>
           </Card>
 
+          {/* Required Services */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-lg">שירותים נדרשים</CardTitle>
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" onClick={() => { setNewServiceForm({ service_id: "", default_quantity: "1", when_applied: "per_month" }); setAddServiceDialog(true); }}>
+                  <Plus className="h-4 w-4 ml-1" />הוסף
+                </Button>
+                <Button size="sm" onClick={handleGenerateLines} disabled={generateLines.isPending}>
+                  <Zap className="h-4 w-4 ml-1" />צור שורות לחודש
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {requiredServices && requiredServices.length > 0 ? (
+                <div className="space-y-2">
+                  {requiredServices.map((rs: any) => (
+                    <div key={rs.id} className="flex items-center justify-between p-2 rounded border text-sm">
+                      <div>
+                        <span className="font-medium">{rs.service_catalog?.name}</span>
+                        <span className="text-muted-foreground mr-2">× {rs.default_quantity}</span>
+                        <Badge variant="outline" className="text-xs mr-1">{whenLabels[rs.when_applied] || rs.when_applied}</Badge>
+                      </div>
+                      <Button variant="ghost" size="icon" onClick={() => deleteReqService.mutateAsync({ id: rs.id, projectId: selectedProjectId })}>
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="text-muted-foreground">אין שירותים נדרשים מוגדרים</p>}
+            </CardContent>
+          </Card>
+
+          {/* Checkpoints */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg">צ׳קפוינטים חודשיים</CardTitle>
@@ -130,6 +206,32 @@ export default function ProjectsPage() {
           </Card>
         </div>
 
+        {/* Add Required Service Dialog */}
+        <Dialog open={addServiceDialog} onOpenChange={setAddServiceDialog}>
+          <DialogContent dir="rtl">
+            <DialogHeader><DialogTitle>הוסף שירות נדרש לפרויקט</DialogTitle></DialogHeader>
+            <div className="space-y-3">
+              <Select value={newServiceForm.service_id} onValueChange={(v) => setNewServiceForm({ ...newServiceForm, service_id: v })}>
+                <SelectTrigger><SelectValue placeholder="בחר שירות מהקטלוג" /></SelectTrigger>
+                <SelectContent>
+                  {catalog?.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Input placeholder="כמות ברירת מחדל" type="number" value={newServiceForm.default_quantity} onChange={(e) => setNewServiceForm({ ...newServiceForm, default_quantity: e.target.value })} />
+              <Select value={newServiceForm.when_applied} onValueChange={(v) => setNewServiceForm({ ...newServiceForm, when_applied: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="on_project_create">ביצירת פרויקט</SelectItem>
+                  <SelectItem value="per_month">כל חודש</SelectItem>
+                  <SelectItem value="on_stage">בשלב מסוים</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={handleAddRequiredService} className="w-full">הוסף</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Checkpoint Dialog */}
         <Dialog open={checkpointDialog} onOpenChange={setCheckpointDialog}>
           <DialogContent dir="rtl">
             <DialogHeader><DialogTitle>צ׳קפוינט לחודש הנוכחי</DialogTitle></DialogHeader>

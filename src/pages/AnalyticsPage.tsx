@@ -61,7 +61,7 @@ export default function AnalyticsPage() {
   const tiers = activePlan?.commission_tiers?.sort((a: any, b: any) => a.order_index - b.order_index) || [];
 
   const getServiceFees = (month: number) =>
-    services?.filter((s: any) => s.month === month).reduce((sum: number, s: any) => sum + Number(s.monthly_fee), 0) || 0;
+    services?.filter((s: any) => s.month === month).reduce((sum: number, s: any) => sum + Number(s.unit_price || s.monthly_fee) * Number(s.quantity || 1), 0) || 0;
 
   const getCommission = (month: number) => {
     const snap = getSnapshot(month);

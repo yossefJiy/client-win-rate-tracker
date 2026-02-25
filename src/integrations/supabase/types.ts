@@ -63,12 +63,16 @@ export type Database = {
           created_at: string
           delivery_notes: string | null
           id: string
+          linked_project_id: string | null
           month: number
           monthly_fee: number
           platform: string | null
+          pricing_basis: string
+          quantity: number
           service_id: string | null
           service_name: string | null
           status: string
+          unit_price: number | null
           year: number
         }
         Insert: {
@@ -78,12 +82,16 @@ export type Database = {
           created_at?: string
           delivery_notes?: string | null
           id?: string
+          linked_project_id?: string | null
           month: number
           monthly_fee?: number
           platform?: string | null
+          pricing_basis?: string
+          quantity?: number
           service_id?: string | null
           service_name?: string | null
           status?: string
+          unit_price?: number | null
           year: number
         }
         Update: {
@@ -93,12 +101,16 @@ export type Database = {
           created_at?: string
           delivery_notes?: string | null
           id?: string
+          linked_project_id?: string | null
           month?: number
           monthly_fee?: number
           platform?: string | null
+          pricing_basis?: string
+          quantity?: number
           service_id?: string | null
           service_name?: string | null
           status?: string
+          unit_price?: number | null
           year?: number
         }
         Relationships: [
@@ -114,6 +126,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_monthly_services_linked_project_id_fkey"
+            columns: ["linked_project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
           {
@@ -182,6 +201,7 @@ export type Database = {
           name: string
           notes: string | null
           phone: string | null
+          plan_type: string
           status: string
         }
         Insert: {
@@ -192,6 +212,7 @@ export type Database = {
           name: string
           notes?: string | null
           phone?: string | null
+          plan_type?: string
           status?: string
         }
         Update: {
@@ -202,6 +223,7 @@ export type Database = {
           name?: string
           notes?: string | null
           phone?: string | null
+          plan_type?: string
           status?: string
         }
         Relationships: []
@@ -302,6 +324,100 @@ export type Database = {
           value?: string | null
         }
         Relationships: []
+      }
+      invoice_line_items: {
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          invoice_id: string
+          line_total: number
+          quantity: number
+          source_id: string | null
+          source_type: string
+          unit_price: number
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          id?: string
+          invoice_id: string
+          line_total?: number
+          quantity?: number
+          source_id?: string | null
+          source_type?: string
+          unit_price?: number
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          invoice_id?: string
+          line_total?: number
+          quantity?: number
+          source_id?: string | null
+          source_type?: string
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_line_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          month: number
+          paid_at: string | null
+          sent_at: string | null
+          status: string
+          subtotal: number
+          total: number
+          vat_amount: number
+          year: number
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          month: number
+          paid_at?: string | null
+          sent_at?: string | null
+          status?: string
+          subtotal?: number
+          total?: number
+          vat_amount?: number
+          year: number
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          month?: number
+          paid_at?: string | null
+          sent_at?: string | null
+          status?: string
+          subtotal?: number
+          total?: number
+          vat_amount?: number
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       monthly_analytics_snapshots: {
         Row: {
@@ -589,6 +705,61 @@ export type Database = {
           },
         ]
       }
+      project_required_services: {
+        Row: {
+          created_at: string
+          default_quantity: number
+          id: string
+          project_id: string
+          quantity_unit_note: string | null
+          service_id: string
+          stage_id: string | null
+          when_applied: string
+        }
+        Insert: {
+          created_at?: string
+          default_quantity?: number
+          id?: string
+          project_id: string
+          quantity_unit_note?: string | null
+          service_id: string
+          stage_id?: string | null
+          when_applied?: string
+        }
+        Update: {
+          created_at?: string
+          default_quantity?: number
+          id?: string
+          project_id?: string
+          quantity_unit_note?: string | null
+          service_id?: string
+          stage_id?: string | null
+          when_applied?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_required_services_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_required_services_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "service_catalog"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_required_services_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "project_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_stages: {
         Row: {
           created_at: string
@@ -696,6 +867,8 @@ export type Database = {
           id: string
           name: string
           notes: string | null
+          plan_unit_price: number | null
+          regular_unit_price: number | null
         }
         Insert: {
           billing?: string
@@ -705,6 +878,8 @@ export type Database = {
           id?: string
           name: string
           notes?: string | null
+          plan_unit_price?: number | null
+          regular_unit_price?: number | null
         }
         Update: {
           billing?: string
@@ -714,6 +889,8 @@ export type Database = {
           id?: string
           name?: string
           notes?: string | null
+          plan_unit_price?: number | null
+          regular_unit_price?: number | null
         }
         Relationships: []
       }
