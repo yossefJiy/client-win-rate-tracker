@@ -1,7 +1,6 @@
 import { useClients } from "@/hooks/useClients";
 import { useSelectedClient } from "@/hooks/useSelectedClient";
 import { useCommissionPlans, useCreateCommissionPlan, useUpdateCommissionPlan, useCreateCommissionTier, useUpdateCommissionTier, useDeleteCommissionTier } from "@/hooks/useCommissionPlans";
-import { useSeedTamar } from "@/hooks/useSeedTamar";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Trash2, Pencil, Wand2 } from "lucide-react";
+import { Plus, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 export default function CommissionPlansPage() {
@@ -23,7 +22,6 @@ export default function CommissionPlansPage() {
   const createTier = useCreateCommissionTier();
   const updateTier = useUpdateCommissionTier();
   const deleteTier = useDeleteCommissionTier();
-  const seedTamar = useSeedTamar();
 
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
   const [planForm, setPlanForm] = useState({ name: "", minimum_fee: "0", currency: "ILS", base: "net_sales" });
@@ -106,23 +104,11 @@ export default function CommissionPlansPage() {
     } catch { toast.error("שגיאה"); }
   };
 
-  const handleSeed = async () => {
-    try {
-      await seedTamar.mutateAsync();
-      toast.success("תמר דרורי + שירותים + תוכנית עמלה נוצרו בהצלחה");
-    } catch (e: any) {
-      toast.error("שגיאה: " + (e.message || ""));
-    }
-  };
-
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">תוכניות עמלה</h1>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleSeed} disabled={seedTamar.isPending}>
-            <Wand2 className="h-4 w-4 ml-1" />Seed תמר דרורי
-          </Button>
           {clientId && (
             <Button onClick={() => { setPlanForm({ name: "", minimum_fee: "0", currency: "ILS", base: "net_sales" }); setPlanDialogOpen(true); }}>
               <Plus className="h-4 w-4 ml-2" />תוכנית חדשה
