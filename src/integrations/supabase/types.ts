@@ -21,6 +21,7 @@ export type Database = {
           google_ads_customer_id: string | null
           icount_api_token: string | null
           icount_company_id: string | null
+          icount_user: string | null
           id: string
           meta_ad_account_id: string | null
           poconverto_client_key: string | null
@@ -33,6 +34,7 @@ export type Database = {
           google_ads_customer_id?: string | null
           icount_api_token?: string | null
           icount_company_id?: string | null
+          icount_user?: string | null
           id?: string
           meta_ad_account_id?: string | null
           poconverto_client_key?: string | null
@@ -45,6 +47,7 @@ export type Database = {
           google_ads_customer_id?: string | null
           icount_api_token?: string | null
           icount_company_id?: string | null
+          icount_user?: string | null
           id?: string
           meta_ad_account_id?: string | null
           poconverto_client_key?: string | null

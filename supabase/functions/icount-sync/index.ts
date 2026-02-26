@@ -32,14 +32,15 @@ serve(async (req) => {
       .eq("client_id", client_id)
       .single();
 
-    if (!clientIntegration?.icount_company_id || !clientIntegration?.icount_api_token) {
-      return new Response(JSON.stringify({ error: "iCount settings not configured for this client" }), {
+    if (!clientIntegration?.icount_company_id || !clientIntegration?.icount_api_token || !clientIntegration?.icount_user) {
+      return new Response(JSON.stringify({ error: "iCount settings not configured for this client (need company_id, user, and api_token)" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const companyId = clientIntegration.icount_company_id;
+    const icountUser = clientIntegration.icount_user;
     const apiToken = clientIntegration.icount_api_token;
 
     // Calculate date range
@@ -51,6 +52,8 @@ serve(async (req) => {
     const lastDay = new Date(targetYear, targetMonth, 0).getDate();
     const toDate = `${targetYear}-${String(targetMonth).padStart(2, "0")}-${lastDay}`;
 
+    console.log(`[icount-sync] Fetching docs for ${companyId} user=${icountUser} from ${fromDate} to ${toDate}`);
+
     // Call iCount API to get invoices/receipts
     const icountUrl = `https://api.icount.co.il/api/v3.php/doc/list`;
     const response = await fetch(icountUrl, {
@@ -58,8 +61,9 @@ serve(async (req) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         cid: companyId,
-        user: apiToken,
-        doctype: "invrec", // invoice-receipt
+        user: icountUser,
+        pass: apiToken,
+        doctype: "invrec",
         fromdate: fromDate,
         todate: toDate,
       }),
