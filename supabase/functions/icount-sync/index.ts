@@ -25,25 +25,20 @@ serve(async (req) => {
       });
     }
 
-    // Get client iCount settings
     const { data: clientIntegration } = await supabase
       .from("client_integrations")
       .select("*")
       .eq("client_id", client_id)
       .single();
 
-    if (!clientIntegration?.icount_company_id || !clientIntegration?.icount_api_token || !clientIntegration?.icount_user) {
-      return new Response(JSON.stringify({ error: "iCount settings not configured for this client (need company_id, user and api_token)" }), {
+    if (!clientIntegration?.icount_api_token) {
+      return new Response(JSON.stringify({ error: "iCount API token not configured" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const companyId = clientIntegration.icount_company_id;
     const apiToken = clientIntegration.icount_api_token;
-    const icountUser = clientIntegration.icount_user;
-
-    // Calculate date range
     const now = new Date();
     const targetYear = year || now.getFullYear();
     const targetMonth = month || (now.getMonth() + 1);
@@ -52,60 +47,77 @@ serve(async (req) => {
     const lastDay = new Date(targetYear, targetMonth, 0).getDate();
     const toDate = `${targetYear}-${String(targetMonth).padStart(2, "0")}-${lastDay}`;
 
-    console.log(`[icount-sync] Fetching docs for ${companyId} from ${fromDate} to ${toDate} using Bearer token`);
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiToken}`,
+    };
 
-    // Call iCount API with Bearer token authentication
-    const icountUrl = `https://api.icount.co.il/api/v3.php/doc/list`;
-    const response = await fetch(icountUrl, {
+    console.log(`[icount-sync] Fetching invrec docs from ${fromDate} to ${toDate}`);
+
+    // Fetch invoices/receipts (invrec)
+    const invrecResponse = await fetch("https://api.icount.co.il/api/v3.php/doc/list", {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiToken}`,
-      },
+      headers,
       body: JSON.stringify({
-        cid: companyId,
-        user: icountUser,
         doctype: "invrec",
         fromdate: fromDate,
         todate: toDate,
       }),
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      return new Response(JSON.stringify({ error: `iCount API error [${response.status}]: ${errText}` }), {
+    const invrecResult = await invrecResponse.json();
+    console.log(`[icount-sync] invrec response: status=${invrecResult.status}, reason=${invrecResult.reason || 'none'}`);
+
+    if (!invrecResult.status) {
+      return new Response(JSON.stringify({ error: "iCount API error (invrec)", details: invrecResult.reason || invrecResult }), {
         status: 502,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const result = await response.json();
-    console.log(`[icount-sync] API response status: ${result.status}, reason: ${result.reason || 'none'}`);
-    
-    if (!result.status || result.status !== true) {
-      return new Response(JSON.stringify({ error: "iCount API returned error", details: result.reason || result }), {
-        status: 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // Fetch credit notes (refunds/cancellations)
+    console.log(`[icount-sync] Fetching credit docs from ${fromDate} to ${toDate}`);
+    const creditResponse = await fetch("https://api.icount.co.il/api/v3.php/doc/list", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        doctype: "credit",
+        fromdate: fromDate,
+        todate: toDate,
+      }),
+    });
 
-    const docs = result.docs || [];
-    
-    // Sum up totals from documents
+    const creditResult = await creditResponse.json();
+    console.log(`[icount-sync] credit response: status=${creditResult.status}, reason=${creditResult.reason || 'none'}`);
+
+    // Sum invoices
+    const invDocs = invrecResult.docs || [];
     let totalGross = 0;
     let totalNet = 0;
-    let docCount = 0;
+    let invCount = 0;
 
-    for (const doc of docs) {
-      const gross = parseFloat(doc.total) || 0;
-      const net = parseFloat(doc.total_wo_vat || doc.total_before_vat) || gross;
-      totalGross += gross;
-      totalNet += net;
-      docCount++;
+    for (const doc of invDocs) {
+      totalGross += parseFloat(doc.total) || 0;
+      totalNet += parseFloat(doc.total_wo_vat || doc.total_before_vat) || (parseFloat(doc.total) || 0);
+      invCount++;
     }
 
-    // Upsert to monthly_offline_revenue
-    const { data: existing } = await supabase
+    // Sum credit notes (refunds)
+    let totalRefundsGross = 0;
+    let totalRefundsNet = 0;
+    let creditCount = 0;
+
+    if (creditResult.status) {
+      const creditDocs = creditResult.docs || [];
+      for (const doc of creditDocs) {
+        totalRefundsGross += parseFloat(doc.total) || 0;
+        totalRefundsNet += parseFloat(doc.total_wo_vat || doc.total_before_vat) || (parseFloat(doc.total) || 0);
+        creditCount++;
+      }
+    }
+
+    // Upsert invoices row
+    const { data: existingInv } = await supabase
       .from("monthly_offline_revenue")
       .select("id")
       .eq("client_id", client_id)
@@ -114,29 +126,56 @@ serve(async (req) => {
       .eq("source", "icount_invoices")
       .maybeSingle();
 
-    const row = {
+    const invRow = {
       client_id,
       year: targetYear,
       month: targetMonth,
       amount_gross: totalGross,
       amount_net: totalNet,
       source: "icount_invoices",
-      notes: `${docCount} מסמכים מאייקאונט`,
+      notes: `${invCount} מסמכי הכנסה`,
       last_synced_at: new Date().toISOString(),
     };
 
-    if (existing) {
-      await supabase
-        .from("monthly_offline_revenue")
-        .update(row)
-        .eq("id", existing.id);
+    if (existingInv) {
+      await supabase.from("monthly_offline_revenue").update(invRow).eq("id", existingInv.id);
     } else {
-      await supabase
-        .from("monthly_offline_revenue")
-        .insert(row);
+      await supabase.from("monthly_offline_revenue").insert(invRow);
     }
 
-    return new Response(JSON.stringify({ success: true, docs_count: docCount, total_gross: totalGross, total_net: totalNet }), {
+    // Upsert credit/refunds row
+    const { data: existingCredit } = await supabase
+      .from("monthly_offline_revenue")
+      .select("id")
+      .eq("client_id", client_id)
+      .eq("year", targetYear)
+      .eq("month", targetMonth)
+      .eq("source", "icount_credits")
+      .maybeSingle();
+
+    const creditRow = {
+      client_id,
+      year: targetYear,
+      month: targetMonth,
+      amount_gross: totalRefundsGross,
+      amount_net: totalRefundsNet,
+      source: "icount_credits",
+      notes: `${creditCount} מסמכי זיכוי/החזר`,
+      last_synced_at: new Date().toISOString(),
+    };
+
+    if (existingCredit) {
+      await supabase.from("monthly_offline_revenue").update(creditRow).eq("id", existingCredit.id);
+    } else if (creditCount > 0) {
+      await supabase.from("monthly_offline_revenue").insert(creditRow);
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      invoices: { count: invCount, gross: totalGross, net: totalNet },
+      credits: { count: creditCount, gross: totalRefundsGross, net: totalRefundsNet },
+      net_total: totalGross - totalRefundsGross,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
