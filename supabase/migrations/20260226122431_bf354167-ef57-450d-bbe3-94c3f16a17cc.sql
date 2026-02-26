@@ -1,0 +1,1 @@
+ALTER TABLE public.client_integrations ADD COLUMN icount_user text;

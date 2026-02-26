@@ -50,7 +50,7 @@ export default function AnalyticsPage() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [drillMonth, setDrillMonth] = useState<number | null>(null);
-  const [settingsForm, setSettingsForm] = useState({ base_url: "", api_key: "", client_key: "", shop_domain: "", icount_company_id: "", icount_api_token: "" });
+  const [settingsForm, setSettingsForm] = useState({ base_url: "", api_key: "", client_key: "", shop_domain: "", icount_company_id: "", icount_user: "", icount_api_token: "" });
   const [offlineDialog, setOfflineDialog] = useState(false);
   const [offlineForm, setOfflineForm] = useState({ month: (new Date().getMonth() + 1).toString(), amount_gross: "", amount_net: "", source: "icount_other", notes: "" });
 
@@ -101,6 +101,7 @@ export default function AnalyticsPage() {
       client_key: (integration as any)?.poconverto_client_key || "",
       shop_domain: (integration as any)?.shop_domain || "",
       icount_company_id: (integration as any)?.icount_company_id || "",
+      icount_user: (integration as any)?.icount_user || "",
       icount_api_token: (integration as any)?.icount_api_token || "",
     });
     setSettingsOpen(true);
@@ -116,6 +117,7 @@ export default function AnalyticsPage() {
           poconverto_client_key: settingsForm.client_key || undefined,
           shop_domain: settingsForm.shop_domain || undefined,
           icount_company_id: settingsForm.icount_company_id || undefined,
+          icount_user: settingsForm.icount_user || undefined,
           icount_api_token: settingsForm.icount_api_token || undefined,
         } as any);
       }
@@ -391,7 +393,8 @@ export default function AnalyticsPage() {
               <h4 className="font-medium text-sm mb-2">iCount (חשבוניות)</h4>
               <div className="space-y-2">
                 <Input placeholder="Company ID" value={settingsForm.icount_company_id} onChange={(e) => setSettingsForm({ ...settingsForm, icount_company_id: e.target.value })} />
-                <Input placeholder="API Token" type="password" value={settingsForm.icount_api_token} onChange={(e) => setSettingsForm({ ...settingsForm, icount_api_token: e.target.value })} />
+                <Input placeholder="שם משתמש (User)" value={settingsForm.icount_user} onChange={(e) => setSettingsForm({ ...settingsForm, icount_user: e.target.value })} />
+                <Input placeholder="API Token / סיסמה" type="password" value={settingsForm.icount_api_token} onChange={(e) => setSettingsForm({ ...settingsForm, icount_api_token: e.target.value })} />
               </div>
             </div>
             <Button onClick={saveSettings} className="w-full">שמור הגדרות</Button>
