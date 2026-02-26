@@ -32,8 +32,8 @@ serve(async (req) => {
       .eq("client_id", client_id)
       .single();
 
-    if (!clientIntegration?.icount_company_id || !clientIntegration?.icount_api_token) {
-      return new Response(JSON.stringify({ error: "iCount settings not configured for this client (need company_id and api_token)" }), {
+    if (!clientIntegration?.icount_company_id || !clientIntegration?.icount_api_token || !clientIntegration?.icount_user) {
+      return new Response(JSON.stringify({ error: "iCount settings not configured for this client (need company_id, user and api_token)" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -41,6 +41,7 @@ serve(async (req) => {
 
     const companyId = clientIntegration.icount_company_id;
     const apiToken = clientIntegration.icount_api_token;
+    const icountUser = clientIntegration.icount_user;
 
     // Calculate date range
     const now = new Date();
@@ -63,6 +64,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         cid: companyId,
+        user: icountUser,
         doctype: "invrec",
         fromdate: fromDate,
         todate: toDate,
