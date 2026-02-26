@@ -94,10 +94,25 @@ serve(async (req) => {
         }
 
         if (relevantData.length > 0) {
+          // For each platform+month, keep only the LATEST snapshot (by snapshot_date)
+          const latestByPlatformMonth: Record<string, any> = {};
+          for (const item of relevantData) {
+            const snapshotDate = new Date(item.snapshot_date || item.updated_at || new Date());
+            const year = snapshotDate.getFullYear();
+            const month = snapshotDate.getMonth() + 1;
+            const platform = item.platform || "unknown";
+            const key = `${year}-${month}-${platform}`;
+            if (!latestByPlatformMonth[key] || snapshotDate > new Date(latestByPlatformMonth[key].snapshot_date || latestByPlatformMonth[key].updated_at)) {
+              latestByPlatformMonth[key] = item;
+            }
+          }
+          const dedupedData = Object.values(latestByPlatformMonth);
+          console.log(`[poconverto-sync] Deduped to ${dedupedData.length} latest snapshots (from ${relevantData.length} total)`);
+
           // Group by year/month and merge platforms
           const monthlyMap: Record<string, Record<string, any>> = {};
 
-          for (const item of relevantData) {
+          for (const item of dedupedData) {
             const snapshotDate = new Date(item.snapshot_date || item.updated_at || new Date());
             const year = snapshotDate.getFullYear();
             const month = snapshotDate.getMonth() + 1;
