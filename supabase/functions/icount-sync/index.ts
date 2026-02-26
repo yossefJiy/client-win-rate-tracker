@@ -32,46 +32,17 @@ serve(async (req) => {
       .eq("client_id", client_id)
       .single();
 
-    if (!clientIntegration?.icount_company_id || !clientIntegration?.icount_api_token || !clientIntegration?.icount_user) {
-      return new Response(JSON.stringify({ error: "iCount settings not configured for this client (need company_id, user, and api_token)" }), {
+    if (!clientIntegration?.icount_company_id || !clientIntegration?.icount_api_token) {
+      return new Response(JSON.stringify({ error: "iCount settings not configured for this client (need company_id and api_token)" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const companyId = clientIntegration.icount_company_id;
-    const icountUser = clientIntegration.icount_user;
-    const icountPass = clientIntegration.icount_api_token; // This is the password/api_token
+    const apiToken = clientIntegration.icount_api_token;
 
-    // Step 1: Login to get session ID
-    console.log(`[icount-sync] Logging in as ${icountUser} to company ${companyId}`);
-    
-    const loginResponse = await fetch("https://api.icount.co.il/api/v3.php/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        cid: companyId,
-        user: icountUser,
-        pass: icountPass,
-      }),
-    });
-
-    const loginResult = await loginResponse.json();
-    console.log(`[icount-sync] Login response status: ${loginResult.status}, has sid: ${!!loginResult.sid}`);
-
-    if (!loginResult.status || !loginResult.sid) {
-      return new Response(JSON.stringify({ 
-        error: "iCount login failed", 
-        details: loginResult.reason || loginResult.error_description || loginResult 
-      }), {
-        status: 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const sid = loginResult.sid;
-
-    // Step 2: Calculate date range
+    // Calculate date range
     const now = new Date();
     const targetYear = year || now.getFullYear();
     const targetMonth = month || (now.getMonth() + 1);
@@ -80,15 +51,18 @@ serve(async (req) => {
     const lastDay = new Date(targetYear, targetMonth, 0).getDate();
     const toDate = `${targetYear}-${String(targetMonth).padStart(2, "0")}-${lastDay}`;
 
-    console.log(`[icount-sync] Fetching docs from ${fromDate} to ${toDate}`);
+    console.log(`[icount-sync] Fetching docs for ${companyId} from ${fromDate} to ${toDate} using Bearer token`);
 
-    // Step 3: Call iCount API to get invoices/receipts using session ID
+    // Call iCount API with Bearer token authentication
     const icountUrl = `https://api.icount.co.il/api/v3.php/doc/list`;
     const response = await fetch(icountUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiToken}`,
+      },
       body: JSON.stringify({
-        sid: sid,
+        cid: companyId,
         doctype: "invrec",
         fromdate: fromDate,
         todate: toDate,
@@ -104,6 +78,7 @@ serve(async (req) => {
     }
 
     const result = await response.json();
+    console.log(`[icount-sync] API response status: ${result.status}, reason: ${result.reason || 'none'}`);
     
     if (!result.status || result.status !== true) {
       return new Response(JSON.stringify({ error: "iCount API returned error", details: result.reason || result }), {
@@ -157,17 +132,6 @@ serve(async (req) => {
       await supabase
         .from("monthly_offline_revenue")
         .insert(row);
-    }
-
-    // Step 4: Logout
-    try {
-      await fetch("https://api.icount.co.il/api/v3.php/auth/logout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sid }),
-      });
-    } catch (e) {
-      console.log("[icount-sync] Logout failed (non-critical):", e);
     }
 
     return new Response(JSON.stringify({ success: true, docs_count: docCount, total_gross: totalGross, total_net: totalNet }), {
