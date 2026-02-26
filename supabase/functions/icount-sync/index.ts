@@ -25,20 +25,13 @@ serve(async (req) => {
       });
     }
 
-    const { data: clientIntegration } = await supabase
-      .from("client_integrations")
-      .select("*")
-      .eq("client_id", client_id)
-      .single();
-
-    if (!clientIntegration?.icount_api_token) {
-      return new Response(JSON.stringify({ error: "iCount API token not configured" }), {
+    const apiToken = Deno.env.get("ICOUNT_API_TOKEN");
+    if (!apiToken) {
+      return new Response(JSON.stringify({ error: "ICOUNT_API_TOKEN secret not configured" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const apiToken = clientIntegration.icount_api_token;
     const now = new Date();
     const targetYear = year || now.getFullYear();
     const targetMonth = month || (now.getMonth() + 1);
