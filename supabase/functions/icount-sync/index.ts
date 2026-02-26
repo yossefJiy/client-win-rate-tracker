@@ -16,14 +16,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { client_id, year, month } = await req.json();
-
-    if (!client_id) {
-      return new Response(JSON.stringify({ error: "client_id required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const { client_id, year, month, action } = await req.json();
 
     const apiToken = Deno.env.get("ICOUNT_API_TOKEN");
     if (!apiToken) {
@@ -32,6 +25,27 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Test mode - check if token works
+    if (action === "test") {
+      const testRes = await fetch("https://api.icount.co.il/api/v3.php/app/info", {
+        method: "GET",
+        headers: { "Authorization": `Bearer ${apiToken}` },
+      });
+      const testResult = await testRes.json();
+      console.log("[icount-sync] app/info response:", JSON.stringify(testResult));
+      return new Response(JSON.stringify({ test: testResult }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!client_id) {
+      return new Response(JSON.stringify({ error: "client_id required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const now = new Date();
     const targetYear = year || now.getFullYear();
     const targetMonth = month || (now.getMonth() + 1);
