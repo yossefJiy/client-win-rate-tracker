@@ -94,25 +94,10 @@ serve(async (req) => {
         }
 
         if (relevantData.length > 0) {
-          // For each platform+month, keep only the LATEST snapshot (by snapshot_date)
-          const latestByPlatformMonth: Record<string, any> = {};
-          for (const item of relevantData) {
-            const snapshotDate = new Date(item.snapshot_date || item.updated_at || new Date());
-            const year = snapshotDate.getFullYear();
-            const month = snapshotDate.getMonth() + 1;
-            const platform = item.platform || "unknown";
-            const key = `${year}-${month}-${platform}`;
-            if (!latestByPlatformMonth[key] || snapshotDate > new Date(latestByPlatformMonth[key].snapshot_date || latestByPlatformMonth[key].updated_at)) {
-              latestByPlatformMonth[key] = item;
-            }
-          }
-          const dedupedData = Object.values(latestByPlatformMonth);
-          console.log(`[poconverto-sync] Deduped to ${dedupedData.length} latest snapshots (from ${relevantData.length} total)`);
-
-          // Group by year/month and merge platforms
+          // Group by year/month and SUM daily snapshots per platform
           const monthlyMap: Record<string, Record<string, any>> = {};
 
-          for (const item of dedupedData) {
+          for (const item of relevantData) {
             const snapshotDate = new Date(item.snapshot_date || item.updated_at || new Date());
             const year = snapshotDate.getFullYear();
             const month = snapshotDate.getMonth() + 1;
@@ -133,65 +118,89 @@ serve(async (req) => {
 
             switch (item.platform) {
               case "shopify":
-              case "woocommerce":
-                row.gross_sales = data.total_revenue || metrics.total_revenue || data.summary?.grossSales || 0;
-                row.net_sales = data.total_revenue || metrics.total_revenue || data.summary?.netSales || 0;
-                row.orders = data.orders_count || metrics.orders_count || data.summary?.totalOrders || 0;
-                row.avg_order_value = data.average_order_value || metrics.average_order_value || data.summary?.avgOrderValue || 0;
-                row.conversion_rate = parseFloat(data.conversion_rate || metrics.conversion_rate || data.summary?.conversionRate || "0");
-                row.new_customers = data.customers_count || metrics.customers_count || data.summary?.uniqueCustomers || 0;
-                row.sessions = data.sessions || metrics.sessions || row.sessions || 0;
-                row.discounts = data.discounts || data.summary?.discounts || 0;
-                row.refunds = data.refunds || data.summary?.returns || 0;
+              case "woocommerce": {
+                const dayRevenue = data.total_revenue || metrics.total_revenue || 0;
+                const dayOrders = data.orders_count || metrics.orders_count || 0;
+                const dayCustomers = data.customers_count || metrics.customers_count || 0;
+                const daySessions = data.sessions || metrics.sessions || 0;
+                const dayDiscounts = data.discounts || 0;
+                const dayRefunds = data.refunds || 0;
+                row.gross_sales = (row.gross_sales || 0) + dayRevenue;
+                row.net_sales = (row.net_sales || 0) + dayRevenue;
+                row.orders = (row.orders || 0) + dayOrders;
+                row.new_customers = (row.new_customers || 0) + dayCustomers;
+                row.sessions = (row.sessions || 0) + daySessions;
+                row.discounts = (row.discounts || 0) + dayDiscounts;
+                row.refunds = (row.refunds || 0) + dayRefunds;
+                // AVG fields: weighted by orders
+                row._shopify_days = (row._shopify_days || 0) + 1;
+                row._aov_sum = (row._aov_sum || 0) + (data.average_order_value || metrics.average_order_value || 0);
+                row._cvr_sum = (row._cvr_sum || 0) + parseFloat(data.conversion_rate || metrics.conversion_rate || "0");
                 break;
+              }
               case "google_ads": {
                 const spent = data.campaigns?.reduce((s: number, c: any) => s + (c.spent || 0), 0) || metrics.total_spent || 0;
                 const impressions = data.campaigns?.reduce((s: number, c: any) => s + (c.impressions || 0), 0) || metrics.total_impressions || 0;
                 const clicks = data.campaigns?.reduce((s: number, c: any) => s + (c.clicks || 0), 0) || metrics.total_clicks || 0;
-                row.ad_spend_google = spent;
-                row.google_impressions = impressions;
-                row.google_clicks = clicks;
-                row.google_cpc = clicks > 0 ? spent / clicks : 0;
-                row.google_cpm = impressions > 0 ? (spent / impressions) * 1000 : 0;
-                const convValue = data.campaigns?.reduce((s: number, c: any) => s + (c.conversions || 0), 0) || 0;
-                row.google_roas = spent > 0 ? convValue / spent : 0;
+                row.ad_spend_google = (row.ad_spend_google || 0) + spent;
+                row.google_impressions = (row.google_impressions || 0) + impressions;
+                row.google_clicks = (row.google_clicks || 0) + clicks;
+                row._google_conv = (row._google_conv || 0) + (data.campaigns?.reduce((s: number, c: any) => s + (c.conversions || 0), 0) || 0);
                 break;
               }
               case "facebook_ads": {
                 const spent = data.campaigns?.reduce((s: number, c: any) => s + (c.spent || 0), 0) || metrics.total_spent || 0;
                 const impressions = data.campaigns?.reduce((s: number, c: any) => s + (c.impressions || 0), 0) || metrics.total_impressions || 0;
                 const clicks = data.campaigns?.reduce((s: number, c: any) => s + (c.clicks || 0), 0) || metrics.total_clicks || 0;
-                row.ad_spend_meta = spent;
-                row.meta_impressions = impressions;
-                row.meta_clicks = clicks;
-                row.meta_cpc = clicks > 0 ? spent / clicks : 0;
-                row.meta_cpm = impressions > 0 ? (spent / impressions) * 1000 : 0;
-                const convValue = data.campaigns?.reduce((s: number, c: any) => s + (c.conversions || 0), 0) || 0;
-                row.meta_roas = spent > 0 ? convValue / spent : 0;
+                row.ad_spend_meta = (row.ad_spend_meta || 0) + spent;
+                row.meta_impressions = (row.meta_impressions || 0) + impressions;
+                row.meta_clicks = (row.meta_clicks || 0) + clicks;
+                row._meta_conv = (row._meta_conv || 0) + (data.campaigns?.reduce((s: number, c: any) => s + (c.conversions || 0), 0) || 0);
                 break;
               }
               case "tiktok_ads": {
                 const spent = data.campaigns?.reduce((s: number, c: any) => s + (c.spent || 0), 0) || metrics.total_spent || 0;
                 const impressions = data.campaigns?.reduce((s: number, c: any) => s + (c.impressions || 0), 0) || metrics.total_impressions || 0;
                 const clicks = data.campaigns?.reduce((s: number, c: any) => s + (c.clicks || 0), 0) || metrics.total_clicks || 0;
-                row.ad_spend_tiktok = spent;
-                row.tiktok_impressions = impressions;
-                row.tiktok_clicks = clicks;
-                row.tiktok_cpc = clicks > 0 ? spent / clicks : 0;
-                row.tiktok_cpm = impressions > 0 ? (spent / impressions) * 1000 : 0;
+                row.ad_spend_tiktok = (row.ad_spend_tiktok || 0) + spent;
+                row.tiktok_impressions = (row.tiktok_impressions || 0) + impressions;
+                row.tiktok_clicks = (row.tiktok_clicks || 0) + clicks;
                 break;
               }
-              case "google_analytics":
-                row.page_views = metrics.pageviews || data.pageviews || 0;
-                row.bounce_rate = parseFloat(metrics.bounce_rate || metrics.bounceRate || data.bounce_rate || data.bounceRate || "0");
-                row.sessions = metrics.sessions || data.sessions || row.sessions || 0;
-                row.avg_session_duration = metrics.avg_session_duration || data.avgSessionDuration || data.avg_session_duration || 0;
+              case "google_analytics": {
+                const dayPV = metrics.pageviews || data.pageviews || 0;
+                const daySess = metrics.sessions || data.sessions || 0;
+                row.page_views = (row.page_views || 0) + dayPV;
+                row.sessions = (row.sessions || 0) + daySess;
+                row._ga_days = (row._ga_days || 0) + 1;
+                row._bounce_sum = (row._bounce_sum || 0) + parseFloat(metrics.bounce_rate || metrics.bounceRate || data.bounce_rate || data.bounceRate || "0");
+                row._dur_sum = (row._dur_sum || 0) + (metrics.avg_session_duration || data.avgSessionDuration || data.avg_session_duration || 0);
                 break;
+              }
             }
           }
 
           // Calculate totals and batch upsert
           const rows = Object.values(monthlyMap).map(row => {
+            // Compute averages from daily sums
+            if (row._shopify_days > 0) {
+              row.avg_order_value = row.orders > 0 ? row.gross_sales / row.orders : row._aov_sum / row._shopify_days;
+              row.conversion_rate = row._cvr_sum / row._shopify_days;
+            }
+            if (row._ga_days > 0) {
+              row.bounce_rate = row._bounce_sum / row._ga_days;
+              row.avg_session_duration = row._dur_sum / row._ga_days;
+            }
+            // Compute CPC/CPM/ROAS from totals
+            row.google_cpc = row.google_clicks > 0 ? row.ad_spend_google / row.google_clicks : 0;
+            row.google_cpm = row.google_impressions > 0 ? (row.ad_spend_google / row.google_impressions) * 1000 : 0;
+            row.google_roas = row.ad_spend_google > 0 ? (row._google_conv || 0) / row.ad_spend_google : 0;
+            row.meta_cpc = row.meta_clicks > 0 ? row.ad_spend_meta / row.meta_clicks : 0;
+            row.meta_cpm = row.meta_impressions > 0 ? (row.ad_spend_meta / row.meta_impressions) * 1000 : 0;
+            row.meta_roas = row.ad_spend_meta > 0 ? (row._meta_conv || 0) / row.ad_spend_meta : 0;
+            row.tiktok_cpc = row.tiktok_clicks > 0 ? row.ad_spend_tiktok / row.tiktok_clicks : 0;
+            row.tiktok_cpm = row.tiktok_impressions > 0 ? (row.ad_spend_tiktok / row.tiktok_impressions) * 1000 : 0;
+            // Totals
             row.ad_spend_total = (row.ad_spend_meta || 0) + (row.ad_spend_google || 0) + (row.ad_spend_tiktok || 0);
             row.total_ad_impressions = (row.meta_impressions || 0) + (row.google_impressions || 0) + (row.tiktok_impressions || 0);
             row.total_ad_clicks = (row.meta_clicks || 0) + (row.google_clicks || 0) + (row.tiktok_clicks || 0);
@@ -199,6 +208,10 @@ serve(async (req) => {
               row.blended_roas = row.net_sales / row.ad_spend_total;
               row.mer = row.net_sales / row.ad_spend_total;
             }
+            // Remove temp fields
+            delete row._shopify_days; delete row._aov_sum; delete row._cvr_sum;
+            delete row._ga_days; delete row._bounce_sum; delete row._dur_sum;
+            delete row._google_conv; delete row._meta_conv;
             return row;
           });
 
