@@ -68,6 +68,16 @@ export default function AnalyticsPage() {
   const getOfflineRevenue = (month: number) =>
     thisYearOffline.filter((r: any) => r.month === month).reduce((sum: number, r: any) => sum + Number(r.amount_gross || 0), 0);
 
+  const getOfflineRevenueNet = (month: number) =>
+    thisYearOffline.filter((r: any) => r.month === month).reduce((sum: number, r: any) => sum + Number(r.amount_net || r.amount_gross || 0), 0);
+
+  const getTotalRevenue = (month: number) => {
+    const snap = getSnapshot(month);
+    const online = snap ? Number(snap.net_sales) : 0;
+    const offline = getOfflineRevenue(month);
+    return online + offline;
+  };
+
   const activePlan = plans?.find((p: any) => p.is_active);
   const tiers = activePlan?.commission_tiers?.sort((a: any, b: any) => a.order_index - b.order_index) || [];
 
@@ -91,8 +101,9 @@ export default function AnalyticsPage() {
   const lastYearSnap = getSnapshot(currentMonth, yearNum - 1);
   const currentCommission = getCommission(currentMonth);
   const currentMER = currentSnap && Number(currentSnap.ad_spend_total) > 0
-    ? Number(currentSnap.net_sales) / Number(currentSnap.ad_spend_total) : null;
+    ? getTotalRevenue(currentMonth) / Number(currentSnap.ad_spend_total) : null;
   const currentOffline = getOfflineRevenue(currentMonth);
+  const currentTotalRevenue = getTotalRevenue(currentMonth);
 
   const openSettings = () => {
     setSettingsForm({
@@ -169,11 +180,20 @@ export default function AnalyticsPage() {
               </Button>
               <Button variant="outline" size="sm" onClick={() => {
                 if (!clientId) return;
-                icountSync.mutateAsync({ clientId, year: yearNum, month: currentMonth })
-                  .then(() => toast.success("אייקאונט סונכרן"))
+                icountSync.mutateAsync({ clientId, action: "sync_daily" })
+                  .then((r) => toast.success(`סונכרנו ${r?.docs_upserted || 0} מסמכים`))
                   .catch(() => toast.error("שגיאה בסנכרון אייקאונט"));
               }} disabled={icountSync.isPending}>
                 <FileText className={`h-4 w-4 ml-1 ${icountSync.isPending ? "animate-spin" : ""}`} />סנכרון iCount
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => {
+                if (!clientId) return;
+                toast.info("מתחיל Backfill של 24 חודשים...");
+                icountSync.mutateAsync({ clientId, action: "backfill", monthsBack: 24 })
+                  .then((r) => toast.success(`Backfill הושלם: ${r?.docs_upserted || 0} מסמכים`))
+                  .catch(() => toast.error("שגיאה ב-Backfill"));
+              }} disabled={icountSync.isPending}>
+                <RefreshCw className={`h-4 w-4 ml-1 ${icountSync.isPending ? "animate-spin" : ""}`} />Backfill 24m
               </Button>
               <Button variant="outline" size="sm" onClick={() => handleSync()} disabled={sync.isPending}>
                 <RefreshCw className={`h-4 w-4 ml-1 ${sync.isPending ? "animate-spin" : ""}`} />סנכרון Converto
@@ -252,8 +272,16 @@ export default function AnalyticsPage() {
             {/* Secondary metrics */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5 mb-6">
               <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">MER</CardTitle></CardHeader>
+                <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">MER (סה״כ הכנסות / פרסום)</CardTitle></CardHeader>
                 <CardContent><p className="text-xl font-bold">{currentMER ? currentMER.toFixed(2) : "—"}</p></CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">סה״כ הכנסות</CardTitle></CardHeader>
+                <CardContent>
+                  <p className="text-xl font-bold">{currentTotalRevenue > 0 ? fmt(currentTotalRevenue) : "—"}</p>
+                  {currentSnap && <p className="text-xs text-muted-foreground">אונליין: {fmt(currentSnap.net_sales)}</p>}
+                  {currentOffline > 0 && <p className="text-xs text-muted-foreground">אופליין: {fmt(currentOffline)}</p>}
+                </CardContent>
               </Card>
               {currentSnap?.orders != null && (
                 <Card>
@@ -275,12 +303,6 @@ export default function AnalyticsPage() {
                   </CardContent>
                 </Card>
               )}
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">הכנסות אופליין</CardTitle></CardHeader>
-                <CardContent>
-                  <p className="text-xl font-bold">{currentOffline > 0 ? fmt(currentOffline) : "—"}</p>
-                </CardContent>
-              </Card>
             </div>
           </TabsContent>
 
@@ -290,16 +312,13 @@ export default function AnalyticsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>חודש</TableHead>
-                    <TableHead>מכירות ברוטו</TableHead>
-                    <TableHead>הנחות</TableHead>
-                    <TableHead>החזרים</TableHead>
-                    <TableHead>מכירות נטו</TableHead>
-                    <TableHead>YoY נטו</TableHead>
+                    <TableHead>אונליין (Shopify)</TableHead>
+                    <TableHead>אופליין (iCount)</TableHead>
+                    <TableHead>סה״כ הכנסות</TableHead>
+                    <TableHead>YoY</TableHead>
                     <TableHead>הזמנות</TableHead>
-                    <TableHead>סשנים</TableHead>
                     <TableHead>פרסום</TableHead>
                     <TableHead>MER</TableHead>
-                    <TableHead>אופליין</TableHead>
                     <TableHead>עמלה</TableHead>
                     <TableHead>שירותים</TableHead>
                     <TableHead className="w-14"></TableHead>
@@ -313,21 +332,20 @@ export default function AnalyticsPage() {
                     const comm = getCommission(month);
                     const fees = getServiceFees(month);
                     const offline = getOfflineRevenue(month);
+                    const totalRev = getTotalRevenue(month);
+                    const prevTotalRev = prevSnap ? Number(prevSnap.net_sales) : undefined;
                     const mer = snap && Number(snap.ad_spend_total) > 0
-                      ? (Number(snap.net_sales) / Number(snap.ad_spend_total)).toFixed(2) : "—";
+                      ? (totalRev / Number(snap.ad_spend_total)).toFixed(2) : "—";
                     return (
                       <TableRow key={month} className={month === currentMonth && yearNum === currentYear ? "bg-muted/30" : ""}>
                         <TableCell className="font-medium">{name}</TableCell>
-                        <TableCell>{snap ? fmt(snap.gross_sales) : "—"}</TableCell>
-                        <TableCell className="text-muted-foreground">{snap && Number(snap.discounts) > 0 ? fmt(snap.discounts) : "—"}</TableCell>
-                        <TableCell className="text-muted-foreground">{snap && Number(snap.refunds) > 0 ? fmt(snap.refunds) : "—"}</TableCell>
-                        <TableCell className="font-medium">{snap ? fmt(snap.net_sales) : "—"}</TableCell>
-                        <TableCell><YoYBadge value={yoyPct(snap?.net_sales, prevSnap?.net_sales)} /></TableCell>
+                        <TableCell>{snap ? fmt(snap.net_sales) : "—"}</TableCell>
+                        <TableCell>{offline > 0 ? fmt(offline) : "—"}</TableCell>
+                        <TableCell className="font-bold">{totalRev > 0 ? fmt(totalRev) : "—"}</TableCell>
+                        <TableCell><YoYBadge value={yoyPct(totalRev || undefined, prevTotalRev)} /></TableCell>
                         <TableCell>{snap?.orders ?? "—"}</TableCell>
-                        <TableCell>{snap?.sessions && Number(snap.sessions) > 0 ? Number(snap.sessions).toLocaleString() : "—"}</TableCell>
                         <TableCell>{snap ? fmt(snap.ad_spend_total) : "—"}</TableCell>
                         <TableCell>{mer}</TableCell>
-                        <TableCell>{offline > 0 ? fmt(offline) : "—"}</TableCell>
                         <TableCell>{comm ? <span title={comm.isMinimum ? "מינימום" : `${comm.tierUsed?.rate_percent}%`}>{fmt(comm.finalDue)}</span> : "—"}</TableCell>
                         <TableCell>{fees > 0 ? fmt(fees) : "—"}</TableCell>
                         <TableCell><Button variant="ghost" size="sm" onClick={() => setDrillMonth(month)}>פרט</Button></TableCell>
@@ -338,16 +356,13 @@ export default function AnalyticsPage() {
                 <TableFooter>
                   <TableRow>
                     <TableCell className="font-bold">סה״כ</TableCell>
-                    <TableCell className="font-bold">{fmt(thisYearSnapshots.reduce((s: number, x: any) => s + Number(x.gross_sales || 0), 0))}</TableCell>
-                    <TableCell className="font-bold">{fmt(thisYearSnapshots.reduce((s: number, x: any) => s + Number(x.discounts || 0), 0))}</TableCell>
-                    <TableCell className="font-bold">{fmt(thisYearSnapshots.reduce((s: number, x: any) => s + Number(x.refunds || 0), 0))}</TableCell>
                     <TableCell className="font-bold">{fmt(thisYearSnapshots.reduce((s: number, x: any) => s + Number(x.net_sales || 0), 0))}</TableCell>
+                    <TableCell className="font-bold">{fmt(thisYearOffline.reduce((s: number, r: any) => s + Number(r.amount_gross || 0), 0))}</TableCell>
+                    <TableCell className="font-bold">{fmt(thisYearSnapshots.reduce((s: number, x: any) => s + Number(x.net_sales || 0), 0) + thisYearOffline.reduce((s: number, r: any) => s + Number(r.amount_gross || 0), 0))}</TableCell>
                     <TableCell />
                     <TableCell className="font-bold">{thisYearSnapshots.reduce((s: number, x: any) => s + Number(x.orders || 0), 0)}</TableCell>
-                    <TableCell className="font-bold">{thisYearSnapshots.reduce((s: number, x: any) => s + Number(x.sessions || 0), 0).toLocaleString()}</TableCell>
                     <TableCell className="font-bold">{fmt(thisYearSnapshots.reduce((s: number, x: any) => s + Number(x.ad_spend_total || 0), 0))}</TableCell>
                     <TableCell />
-                    <TableCell className="font-bold">{fmt(thisYearOffline.reduce((s: number, r: any) => s + Number(r.amount_gross || 0), 0))}</TableCell>
                     <TableCell className="font-bold">{fmt(monthNames.reduce((s, _, i) => s + (getCommission(i + 1)?.finalDue || 0), 0))}</TableCell>
                     <TableCell className="font-bold">{fmt(Array.from({ length: 12 }, (_, i) => getServiceFees(i + 1)).reduce((a, b) => a + b, 0))}</TableCell>
                     <TableCell />

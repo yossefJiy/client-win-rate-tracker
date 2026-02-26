@@ -140,9 +140,9 @@ export function useSyncPoconverto() {
 export function useSyncIcount() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ clientId, year, month }: { clientId: string; year?: number; month?: number }) => {
+    mutationFn: async ({ clientId, action, monthsBack }: { clientId: string; action?: string; monthsBack?: number }) => {
       const res = await supabase.functions.invoke("icount-sync", {
-        body: { client_id: clientId, year, month },
+        body: { client_id: clientId, action: action || "sync_daily", months_back: monthsBack },
       });
       if (res.error) throw res.error;
       return res.data;
