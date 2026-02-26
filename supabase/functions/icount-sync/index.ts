@@ -41,9 +41,37 @@ serve(async (req) => {
 
     const companyId = clientIntegration.icount_company_id;
     const icountUser = clientIntegration.icount_user;
-    const apiToken = clientIntegration.icount_api_token;
+    const icountPass = clientIntegration.icount_api_token; // This is the password/api_token
 
-    // Calculate date range
+    // Step 1: Login to get session ID
+    console.log(`[icount-sync] Logging in as ${icountUser} to company ${companyId}`);
+    
+    const loginResponse = await fetch("https://api.icount.co.il/api/v3.php/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cid: companyId,
+        user: icountUser,
+        pass: icountPass,
+      }),
+    });
+
+    const loginResult = await loginResponse.json();
+    console.log(`[icount-sync] Login response status: ${loginResult.status}, has sid: ${!!loginResult.sid}`);
+
+    if (!loginResult.status || !loginResult.sid) {
+      return new Response(JSON.stringify({ 
+        error: "iCount login failed", 
+        details: loginResult.reason || loginResult.error_description || loginResult 
+      }), {
+        status: 502,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const sid = loginResult.sid;
+
+    // Step 2: Calculate date range
     const now = new Date();
     const targetYear = year || now.getFullYear();
     const targetMonth = month || (now.getMonth() + 1);
@@ -52,17 +80,15 @@ serve(async (req) => {
     const lastDay = new Date(targetYear, targetMonth, 0).getDate();
     const toDate = `${targetYear}-${String(targetMonth).padStart(2, "0")}-${lastDay}`;
 
-    console.log(`[icount-sync] Fetching docs for ${companyId} user=${icountUser} from ${fromDate} to ${toDate}`);
+    console.log(`[icount-sync] Fetching docs from ${fromDate} to ${toDate}`);
 
-    // Call iCount API to get invoices/receipts
+    // Step 3: Call iCount API to get invoices/receipts using session ID
     const icountUrl = `https://api.icount.co.il/api/v3.php/doc/list`;
     const response = await fetch(icountUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        cid: companyId,
-        user: icountUser,
-        pass: apiToken,
+        sid: sid,
         doctype: "invrec",
         fromdate: fromDate,
         todate: toDate,
@@ -131,6 +157,17 @@ serve(async (req) => {
       await supabase
         .from("monthly_offline_revenue")
         .insert(row);
+    }
+
+    // Step 4: Logout
+    try {
+      await fetch("https://api.icount.co.il/api/v3.php/auth/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sid }),
+      });
+    } catch (e) {
+      console.log("[icount-sync] Logout failed (non-critical):", e);
     }
 
     return new Response(JSON.stringify({ success: true, docs_count: docCount, total_gross: totalGross, total_net: totalNet }), {
