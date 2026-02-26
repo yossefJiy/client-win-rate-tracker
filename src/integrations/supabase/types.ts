@@ -313,6 +313,275 @@ export type Database = {
           },
         ]
       }
+      daily_cash_received: {
+        Row: {
+          amount_including_vat: number
+          client_id: string
+          created_at: string
+          date: string
+          id: string
+          integration_id: string | null
+          source: string
+        }
+        Insert: {
+          amount_including_vat?: number
+          client_id: string
+          created_at?: string
+          date: string
+          id?: string
+          integration_id?: string | null
+          source?: string
+        }
+        Update: {
+          amount_including_vat?: number
+          client_id?: string
+          created_at?: string
+          date?: string
+          id?: string
+          integration_id?: string | null
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_cash_received_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_cash_received_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "client_integrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_offline_revenue: {
+        Row: {
+          amount_before_vat: number
+          amount_including_vat: number
+          client_id: string
+          created_at: string
+          date: string
+          id: string
+          notes: string | null
+          source: string
+        }
+        Insert: {
+          amount_before_vat?: number
+          amount_including_vat?: number
+          client_id: string
+          created_at?: string
+          date: string
+          id?: string
+          notes?: string | null
+          source?: string
+        }
+        Update: {
+          amount_before_vat?: number
+          amount_including_vat?: number
+          client_id?: string
+          created_at?: string
+          date?: string
+          id?: string
+          notes?: string | null
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_offline_revenue_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      icount_documents: {
+        Row: {
+          client_id: string
+          created_at: string
+          currency_original: string | null
+          dateissued: string | null
+          docnum: string
+          doctype: string
+          id: string
+          integration_id: string
+          paydate: string | null
+          raw_json: Json | null
+          status: string | null
+          subtotal_before_vat: number
+          synced_at: string
+          total_including_vat: number
+          vat_amount: number | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          currency_original?: string | null
+          dateissued?: string | null
+          docnum: string
+          doctype: string
+          id?: string
+          integration_id: string
+          paydate?: string | null
+          raw_json?: Json | null
+          status?: string | null
+          subtotal_before_vat?: number
+          synced_at?: string
+          total_including_vat?: number
+          vat_amount?: number | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          currency_original?: string | null
+          dateissued?: string | null
+          docnum?: string
+          doctype?: string
+          id?: string
+          integration_id?: string
+          paydate?: string | null
+          raw_json?: Json | null
+          status?: string | null
+          subtotal_before_vat?: number
+          synced_at?: string
+          total_including_vat?: number
+          vat_amount?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "icount_documents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "icount_documents_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "client_integrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      icount_payments: {
+        Row: {
+          amount_including_vat: number
+          client_id: string
+          created_at: string
+          docnum: string
+          doctype: string
+          id: string
+          integration_id: string
+          method: string | null
+          payment_date: string | null
+          raw_json: Json | null
+          synced_at: string
+        }
+        Insert: {
+          amount_including_vat?: number
+          client_id: string
+          created_at?: string
+          docnum: string
+          doctype: string
+          id?: string
+          integration_id: string
+          method?: string | null
+          payment_date?: string | null
+          raw_json?: Json | null
+          synced_at?: string
+        }
+        Update: {
+          amount_including_vat?: number
+          client_id?: string
+          created_at?: string
+          docnum?: string
+          doctype?: string
+          id?: string
+          integration_id?: string
+          method?: string | null
+          payment_date?: string | null
+          raw_json?: Json | null
+          synced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "icount_payments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "icount_payments_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "client_integrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      icount_sync_runs: {
+        Row: {
+          client_id: string
+          created_at: string
+          docs_upserted: number | null
+          errors: Json | null
+          finished_at: string | null
+          id: string
+          integration_id: string
+          months_processed: number | null
+          run_type: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          docs_upserted?: number | null
+          errors?: Json | null
+          finished_at?: string | null
+          id?: string
+          integration_id: string
+          months_processed?: number | null
+          run_type?: string
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          docs_upserted?: number | null
+          errors?: Json | null
+          finished_at?: string | null
+          id?: string
+          integration_id?: string
+          months_processed?: number | null
+          run_type?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "icount_sync_runs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "icount_sync_runs_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "client_integrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_settings: {
         Row: {
           created_at: string
